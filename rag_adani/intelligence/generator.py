@@ -36,19 +36,6 @@ class Generator:
         )
 
     def _build_context_string(self, context_chunks: List[Dict[str, Any]]) -> str:
-        """
-        Assemble retrieved chunks into a numbered context block.
-
-        Each chunk is formatted as:
-            [Chunk p3_c2 | Page 3]
-            <chunk text>
-
-        Args:
-            context_chunks: List of dicts with keys: text, page, chunk_id.
-
-        Returns:
-            A single string with all chunks formatted and separated by blank lines.
-        """
         parts: List[str] = []
         for i, chunk in enumerate(context_chunks, start=1):
             header = f"[Chunk {chunk['chunk_id']} | Page {chunk['page']}]"
@@ -61,30 +48,14 @@ class Generator:
         context_chunks: List[Dict[str, Any]],
         conversation_history: List[Dict[str, str]] | None = None,
     ) -> str:
-        """
-        Generate an answer to the question using the retrieved context chunks.
-
-        Args:
-            question: The user's natural-language question.
-            context_chunks: Retrieved chunks from hybrid search, each with
-                            keys: text, page, chunk_id.
-            conversation_history: Optional list of prior {role, content} messages
-                                  for multi-turn context.
-
-        Returns:
-            The model's answer as a plain string (includes [Sources: ...] footer).
-        """
         context_str = self._build_context_string(context_chunks)
 
-        # Build the conversation for Gemini
-        # Gemini uses "user" and "model" roles (not "assistant")
         history = []
         if conversation_history:
             for msg in conversation_history:
                 role = "model" if msg["role"] == "assistant" else "user"
                 history.append({"role": role, "parts": [msg["content"]]})
 
-        # Final user message with context + question
         user_message = (
             f"Context:\n{context_str}\n\n"
             f"---\n\n"

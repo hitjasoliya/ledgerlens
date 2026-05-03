@@ -87,6 +87,7 @@ def run_smoke_test() -> bool:
                 "page": 3,
                 "chunk_id": "p3_c0",
                 "source": "smoke_test.pdf",
+                "chunk_type": "body",
             },
         },
         {
@@ -97,6 +98,7 @@ def run_smoke_test() -> bool:
                 "page": 7,
                 "chunk_id": "p7_c0",
                 "source": "smoke_test.pdf",
+                "chunk_type": "body",
             },
         },
     ]

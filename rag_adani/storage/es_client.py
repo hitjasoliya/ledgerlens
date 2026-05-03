@@ -52,6 +52,7 @@ class ESClient:
                             "page": {"type": "integer"},
                             "chunk_id": {"type": "keyword"},
                             "source": {"type": "keyword"},
+                            "chunk_type": {"type": "keyword"},
                         },
                     },
                 }
@@ -153,10 +154,13 @@ class ESClient:
             src = hit["_source"]
             knn_order.append(cid)
             if cid not in id_to_row:
+                meta = src["metadata"]
                 id_to_row[cid] = {
                     "text": src["text"],
-                    "page": src["metadata"]["page"],
-                    "chunk_id": src["metadata"]["chunk_id"],
+                    "page": meta["page"],
+                    "chunk_id": meta["chunk_id"],
+                    "source": meta.get("source", ""),
+                    "chunk_type": meta.get("chunk_type", "body"),
                     "score": 0.0,
                 }
 
@@ -165,10 +169,13 @@ class ESClient:
             src = hit["_source"]
             txt_order.append(cid)
             if cid not in id_to_row:
+                meta = src["metadata"]
                 id_to_row[cid] = {
                     "text": src["text"],
-                    "page": src["metadata"]["page"],
-                    "chunk_id": src["metadata"]["chunk_id"],
+                    "page": meta["page"],
+                    "chunk_id": meta["chunk_id"],
+                    "source": meta.get("source", ""),
+                    "chunk_type": meta.get("chunk_type", "body"),
                     "score": 0.0,
                 }
 
@@ -179,6 +186,7 @@ class ESClient:
         if not txt_order:
             return self._rrf_merge([knn_order], id_to_row, top_k)
         return self._rrf_merge([knn_order, txt_order], id_to_row, top_k)
+
 
 
 # ── Quick self-test ─────────────────────────────────────────────────

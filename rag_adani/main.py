@@ -144,7 +144,6 @@ def run_chat() -> None:
             console.print(f"[error]✗ Error: {exc}[/error]\n")
             continue
 
-        # Display the answer in a panel
         answer_text = result["answer"]
         console.print()
         console.print(Panel(

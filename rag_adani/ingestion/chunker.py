@@ -89,6 +89,7 @@ class Chunker:
                         "page": page_num,
                         "chunk_id": chunk_id,
                         "source": source,
+                        "chunk_type": "body",
                     },
                 })
                 chunk_index += 1

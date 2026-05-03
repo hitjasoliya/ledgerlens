@@ -11,7 +11,7 @@ Provides the RAGEngine class that orchestrates the full query flow:
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from intelligence.embedder import Embedder
 from intelligence.generator import Generator
@@ -28,10 +28,9 @@ class RAGEngine:
     with page-number citations.
     """
 
-    MAX_HISTORY_TURNS: int = 6  # keep last 6 messages (3 Q&A pairs)
+    MAX_HISTORY_TURNS: int = 6
 
     def __init__(self) -> None:
-        """Initialise the Embedder, Generator, and ESClient."""
         self.embedder = Embedder()
         self.generator = Generator()
         self.es_client = ESClient()
@@ -40,31 +39,8 @@ class RAGEngine:
     # ── Public API ──────────────────────────────────────────────────
 
     def chat(self, question: str) -> Dict[str, Any]:
-        """
-        Process a user question through the full RAG pipeline.
+        self._append_to_history("user", question.strip())
 
-        Flow:
-          1. Append the question to conversation history
-          2. Embed the question via Embedder
-          3. Hybrid search via ESClient (TOP_K results)
-          4. Build context string from retrieved chunks
-          5. Generate answer via Generator (with conversation history)
-          6. Parse [Sources: ...] from the answer to build citations
-          7. Append the answer to history and return result
-
-        Args:
-            question: The user's natural-language question.
-
-        Returns:
-            Dict with:
-                - "answer": str — the model's response
-                - "citations": list of {"page": int, "chunk_id": str}
-                - "chunks_used": int — number of context chunks retrieved
-        """
-        # Step 1: Record the question in history
-        self._append_to_history("user", question)
-
-        # Step 2: Embed the question
         try:
             query_embedding = self.embedder.embed_query(question)
         except Exception as exc:
@@ -72,7 +48,6 @@ class RAGEngine:
                 f"Failed to embed question: {exc}"
             )
 
-        # Step 3: Hybrid search
         try:
             retrieved_chunks = self.es_client.hybrid_search(
                 query_embedding=query_embedding,
@@ -84,7 +59,6 @@ class RAGEngine:
                 f"Failed to search Elasticsearch: {exc}"
             )
 
-        # Handle no results
         if not retrieved_chunks:
             answer = "Not found in the document."
             self._append_to_history("assistant", answer)
@@ -94,10 +68,7 @@ class RAGEngine:
                 "chunks_used": 0,
             }
 
-        # Step 4 + 5: Generate answer with context and history
         try:
-            # Pass a copy of history (excluding the last user msg, which
-            # the generator will receive as the explicit question)
             history_for_gen = self.conversation_history[:-1]
             answer = self.generator.generate(
                 question=question,
@@ -109,10 +80,8 @@ class RAGEngine:
                 f"Failed to generate answer: {exc}"
             )
 
-        # Step 6: Parse citations from [Sources: p3, p7, ...]
         citations = self._parse_citations(answer, retrieved_chunks)
 
-        # Step 7: Record the answer in history
         self._append_to_history("assistant", answer)
 
         return {
@@ -134,7 +103,6 @@ class RAGEngine:
             ]
 
     def clear_history(self) -> None:
-        """Reset the conversation history."""
         self.conversation_history.clear()
 
     # ── Citation parsing ────────────────────────────────────────────
@@ -165,12 +133,13 @@ class RAGEngine:
 
             # Match cited pages to retrieved chunks for chunk_ids
             for chunk in retrieved_chunks:
-                if chunk["page"] in cited_pages:
+                p = int(chunk["page"])
+                if p in cited_pages:
                     citations.append({
-                        "page": chunk["page"],
+                        "page": p,
                         "chunk_id": chunk["chunk_id"],
                     })
-                    cited_pages.discard(chunk["page"])  # avoid duplicates
+                    cited_pages.discard(p)
 
             # Add any cited pages without matching chunks
             for page in cited_pages:
@@ -179,7 +148,7 @@ class RAGEngine:
             # Fallback: cite all retrieved chunks
             for chunk in retrieved_chunks:
                 citations.append({
-                    "page": chunk["page"],
+                    "page": int(chunk["page"]),
                     "chunk_id": chunk["chunk_id"],
                 })
 
@@ -190,7 +159,6 @@ class RAGEngine:
     # ── Error helper ────────────────────────────────────────────────
 
     def _error_response(self, message: str) -> Dict[str, Any]:
-        """Build a standardised error response dict."""
         error_answer = f"⚠️  Error: {message}"
         self._append_to_history("assistant", error_answer)
         return {

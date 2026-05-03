@@ -36,7 +36,6 @@ class IngestPipeline:
     """End-to-end pipeline: PDF → parse → chunk → embed → index."""
 
     def __init__(self) -> None:
-        """Initialise all sub-components."""
         self.parser = PDFParser()
         self.chunker = Chunker()
         self.embedder = Embedder()
@@ -61,12 +60,12 @@ class IngestPipeline:
         console.rule(f"[bold blue]Ingesting: {source_filename}")
 
         # ── Step 1: Parse PDF ───────────────────────────────────────
-        console.print("\n[bold]Step 1/4:[/bold] Parsing PDF...")
+        console.print("\n[bold]Step 1/3:[/bold] Parsing PDF...")
         pages = self.parser.parse(pdf_path)
         console.print(f"  ✓ {len(pages)} page(s) extracted\n")
 
         # ── Step 2: Chunk text ──────────────────────────────────────
-        console.print("[bold]Step 2/4:[/bold] Chunking text...")
+        console.print("[bold]Step 2/3:[/bold] Chunking text...")
         chunks = self.chunker.chunk(pages, source_filename=source_filename)
         console.print(f"  ✓ {len(chunks)} chunk(s) created\n")
 
@@ -80,8 +79,8 @@ class IngestPipeline:
                 "chunks_indexed": 0,
             }
 
-        # ── Step 3: Embed chunks ────────────────────────────────────
-        console.print("[bold]Step 3/4:[/bold] Generating embeddings...")
+        # ── Step 3: Embed & Index ──────────────────────────────────
+        console.print("[bold]Step 3/3:[/bold] Generating embeddings...")
         texts = [chunk["text"] for chunk in chunks]
 
         with Progress(
@@ -110,8 +109,7 @@ class IngestPipeline:
 
         console.print(f"  ✓ {len(all_embeddings)} embedding(s) generated\n")
 
-        # ── Step 4: Index in Elasticsearch ──────────────────────────
-        console.print("[bold]Step 4/4:[/bold] Indexing in Elasticsearch...")
+        console.print("  Indexing in Elasticsearch...")
         self.es_client.create_index_if_not_exists()
 
         with Progress(

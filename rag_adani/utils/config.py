@@ -34,6 +34,10 @@ EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 EMBEDDING_DIMS: int = 768
 GENERATION_MODEL: str = "models/gemini-3.1-flash-lite-preview"
 
+UNSTRUCTURED_PDF_STRATEGY: str = os.getenv(
+    "UNSTRUCTURED_PDF_STRATEGY", "fast"
+)
+
 # ── System prompt (used by generator.py) ────────────────────────────
 SYSTEM_PROMPT: str = (
     "You are a precise financial document analyst. You ONLY answer using the context "
