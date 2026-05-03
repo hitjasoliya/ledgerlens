@@ -85,15 +85,13 @@ class PDFParser:
         """
         try:
             from unstructured.partition.pdf import partition_pdf
-        except ImportError:
-            print("[Parser] WARNING: 'unstructured' not installed. "
+        except Exception:
+            print("[Parser] WARNING: 'unstructured' unavailable. "
                   "Falling back to pdfplumber for table pages.")
-            # Fallback: use pdfplumber even for table pages
             return self._fallback_pdfplumber(pdf_path, existing_pages,
                                              table_page_indices)
 
         try:
-            # partition_pdf extracts all pages; we filter to the ones we need
             elements = partition_pdf(
                 filename=pdf_path,
                 strategy="hi_res",

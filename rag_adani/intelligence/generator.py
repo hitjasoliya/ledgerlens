@@ -1,7 +1,7 @@
 """
 intelligence/generator.py — Layer 4: Google Gemini generation wrapper.
 
-Wraps the Gemini GenerativeModel API (gemini-2.0-flash) with:
+Wraps the Gemini GenerativeModel API (gemini-3.1-flash-lite-preview) with:
   - The strict financial-analyst system prompt
   - Context assembly from retrieved chunks (with page/chunk headers)
   - Single generate() method returning the plain answer string
@@ -16,7 +16,7 @@ from utils.config import GEMINI_API_KEY, GENERATION_MODEL, SYSTEM_PROMPT
 
 
 class Generator:
-    """Generates answers from retrieved context using Gemini 2.0 Flash."""
+    """Generates answers from retrieved context using Gemini 3.1 Flash Lite."""
 
     def __init__(self) -> None:
         """Initialise the Gemini client with the configured API key."""

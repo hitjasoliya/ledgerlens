@@ -2,7 +2,8 @@
 storage/es_client.py — Layer 5: Elasticsearch index management and hybrid search.
 
 Handles index creation (BM25 + dense_vector), bulk upserts, and
-hybrid search via RRF (Reciprocal Rank Fusion) over kNN + BM25.
+hybrid search via kNN + BM25 merged with reciprocal rank fusion in-process
+(ES server-side RRF requires a commercial license).
 """
 from __future__ import annotations
 
@@ -10,6 +11,9 @@ from typing import Any, Dict, List
 
 from elasticsearch import Elasticsearch, helpers
 from utils.config import ES_HOST, ES_INDEX, EMBEDDING_DIMS
+
+_RRF_K: int = 60
+_CANDIDATE_MULT: int = 10
 
 
 class ESClient:
@@ -92,50 +96,89 @@ class ESClient:
         except Exception as exc:
             raise RuntimeError(f"[ES] Bulk upsert failed: {exc}") from exc
 
+    @staticmethod
+    def _rrf_merge(
+        ranked_ids: List[List[str]],
+        id_to_row: Dict[str, Dict[str, Any]],
+        top_k: int,
+    ) -> List[Dict[str, Any]]:
+        scores: Dict[str, float] = {}
+        for ranked in ranked_ids:
+            for rank, doc_id in enumerate(ranked, start=1):
+                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (_RRF_K + rank)
+        ordered = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_k]
+        out: List[Dict[str, Any]] = []
+        for doc_id, score in ordered:
+            row = id_to_row.get(doc_id)
+            if row:
+                row = dict(row)
+                row["score"] = score
+                out.append(row)
+        return out
+
     def hybrid_search(
         self,
         query_embedding: List[float],
         query_text: str,
         top_k: int = 5,
     ) -> List[Dict[str, Any]]:
-        """Hybrid kNN + BM25 search fused with RRF. Returns top_k results."""
-        body: Dict[str, Any] = {
-            "size": top_k,
-            "sub_searches": [
-                {
-                    "query": {
-                        "knn": {
-                            "field": "embedding",
-                            "query_vector": query_embedding,
-                            "num_candidates": top_k * 10,
-                        }
-                    }
-                },
-                {
-                    "query": {
-                        "match": {"text": {"query": query_text}}
-                    }
-                },
-            ],
-            "rank": {
-                "rrf": {"rank_constant": 60, "window_size": top_k * 10}
+        window = max(top_k * _CANDIDATE_MULT, 50)
+        knn_body: Dict[str, Any] = {
+            "size": window,
+            "knn": {
+                "field": "embedding",
+                "query_vector": query_embedding,
+                "k": window,
+                "num_candidates": min(10000, window * 10),
             },
+            "_source": ["text", "metadata"],
+        }
+        match_body: Dict[str, Any] = {
+            "size": window,
+            "query": {"match": {"text": {"query": query_text}}},
+            "_source": ["text", "metadata"],
         }
         try:
-            response = self.es.search(index=self.index_name, body=body)
+            r_knn = self.es.search(index=self.index_name, body=knn_body)
+            r_txt = self.es.search(index=self.index_name, body=match_body)
         except Exception as exc:
             raise RuntimeError(f"[ES] Hybrid search failed: {exc}") from exc
 
-        results: List[Dict[str, Any]] = []
-        for hit in response["hits"]["hits"]:
+        id_to_row: Dict[str, Dict[str, Any]] = {}
+        knn_order: List[str] = []
+        txt_order: List[str] = []
+
+        for hit in r_knn["hits"]["hits"]:
+            cid = hit["_id"]
             src = hit["_source"]
-            results.append({
-                "text": src["text"],
-                "page": src["metadata"]["page"],
-                "chunk_id": src["metadata"]["chunk_id"],
-                "score": hit.get("_score", 0.0),
-            })
-        return results
+            knn_order.append(cid)
+            if cid not in id_to_row:
+                id_to_row[cid] = {
+                    "text": src["text"],
+                    "page": src["metadata"]["page"],
+                    "chunk_id": src["metadata"]["chunk_id"],
+                    "score": 0.0,
+                }
+
+        for hit in r_txt["hits"]["hits"]:
+            cid = hit["_id"]
+            src = hit["_source"]
+            txt_order.append(cid)
+            if cid not in id_to_row:
+                id_to_row[cid] = {
+                    "text": src["text"],
+                    "page": src["metadata"]["page"],
+                    "chunk_id": src["metadata"]["chunk_id"],
+                    "score": 0.0,
+                }
+
+        if not knn_order and not txt_order:
+            return []
+        if not knn_order:
+            return self._rrf_merge([txt_order], id_to_row, top_k)
+        if not txt_order:
+            return self._rrf_merge([knn_order], id_to_row, top_k)
+        return self._rrf_merge([knn_order, txt_order], id_to_row, top_k)
 
 
 # ── Quick self-test ─────────────────────────────────────────────────

@@ -1,26 +1,17 @@
-"""
-intelligence/embedder.py — Layer 4: Google Gemini embedding wrapper.
-
-Wraps the Gemini Embeddings API (text-embedding-004) with:
-  - Single-text embedding via embed_text()
-  - Batch embedding via embed_batch() with automatic chunking into groups of 100
-"""
 from __future__ import annotations
 
 from typing import List
 
 import google.generativeai as genai
 
-from utils.config import GEMINI_API_KEY, EMBEDDING_MODEL
+from utils.config import GEMINI_API_KEY, EMBEDDING_MODEL, EMBEDDING_DIMS
 
 
 class Embedder:
-    """Generates vector embeddings using Google's text-embedding-004 model."""
 
-    BATCH_SIZE: int = 100  # process in manageable batches
+    BATCH_SIZE: int = 100
 
     def __init__(self) -> None:
-        """Initialise the Gemini client with the configured API key."""
         if not GEMINI_API_KEY:
             raise ValueError(
                 "[Embedder] GEMINI_API_KEY is not set. "
@@ -28,22 +19,15 @@ class Embedder:
             )
         genai.configure(api_key=GEMINI_API_KEY)
         self.model = EMBEDDING_MODEL
+        self.dims = EMBEDDING_DIMS
 
     def embed_text(self, text: str) -> List[float]:
-        """
-        Embed a single text string.
-
-        Args:
-            text: The input text to embed.
-
-        Returns:
-            A list of floats representing the 768-dimensional embedding vector.
-        """
         try:
             result = genai.embed_content(
                 model=self.model,
                 content=text,
                 task_type="retrieval_document",
+                output_dimensionality=self.dims,
             )
             return result["embedding"]
         except Exception as exc:
@@ -52,20 +36,12 @@ class Embedder:
             ) from exc
 
     def embed_query(self, text: str) -> List[float]:
-        """
-        Embed a query string (uses retrieval_query task type for better search).
-
-        Args:
-            text: The query text to embed.
-
-        Returns:
-            A list of floats representing the 768-dimensional embedding vector.
-        """
         try:
             result = genai.embed_content(
                 model=self.model,
                 content=text,
                 task_type="retrieval_query",
+                output_dimensionality=self.dims,
             )
             return result["embedding"]
         except Exception as exc:
@@ -74,15 +50,6 @@ class Embedder:
             ) from exc
 
     def embed_batch(self, texts: List[str]) -> List[List[float]]:
-        """
-        Embed a list of texts in batches of 100.
-
-        Args:
-            texts: List of input texts to embed.
-
-        Returns:
-            A list of embedding vectors, one per input text, in the same order.
-        """
         all_embeddings: List[List[float]] = []
 
         for start in range(0, len(texts), self.BATCH_SIZE):
@@ -92,6 +59,7 @@ class Embedder:
                     model=self.model,
                     content=batch,
                     task_type="retrieval_document",
+                    output_dimensionality=self.dims,
                 )
                 all_embeddings.extend(result["embedding"])
             except Exception as exc:

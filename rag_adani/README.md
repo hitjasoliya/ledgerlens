@@ -16,7 +16,7 @@ A CLI-based Retrieval-Augmented Generation (RAG) chatbot that ingests financial 
 │  ingestion/parser.py     │  intelligence/embedder.py        │
 │  ingestion/chunker.py    │  intelligence/generator.py       │
 │  ingestion/pipeline.py   │  (Gemini text-embedding-004      │
-│  (pdfplumber +           │   + Gemini 2.0 Flash)            │
+│  (pdfplumber +           │   + Gemini 3.1 Flash Lite)        │
 │   unstructured + tiktoken)│                                  │
 ├──────────────────────────┴──────────────────────────────────┤
 │  Layer 5 — Storage (storage/es_client.py)                   │

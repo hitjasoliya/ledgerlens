@@ -30,9 +30,9 @@ CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
 TOP_K: int = int(os.getenv("TOP_K", "5"))
 
 # ── Model identifiers (single source of truth) ─────────────────────
-EMBEDDING_MODEL: str = "models/text-embedding-004"
-EMBEDDING_DIMS: int = 768          # Gemini text-embedding-004 outputs 768 dims
-GENERATION_MODEL: str = "models/gemini-2.0-flash"
+EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+EMBEDDING_DIMS: int = 768
+GENERATION_MODEL: str = "models/gemini-3.1-flash-lite-preview"
 
 # ── System prompt (used by generator.py) ────────────────────────────
 SYSTEM_PROMPT: str = (
