@@ -1,0 +1,9 @@
+google-generativeai>=0.8.0
+llama-index>=0.10.0
+llama-index-vector-stores-elasticsearch
+elasticsearch>=8.0.0
+pdfplumber>=0.10.0
+unstructured[pdf]>=0.13.0
+python-dotenv>=1.0.0
+tiktoken>=0.7.0
+rich>=13.0.0
