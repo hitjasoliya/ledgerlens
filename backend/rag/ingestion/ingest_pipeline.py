@@ -28,7 +28,17 @@ class IngestPipeline:
         self.embedder = Embedder()
         self.es_client = ESClient()
 
-    def run(self, pdf_path: str) -> Dict:
+    def run(
+        self, 
+        pdf_path: str,
+        owner_id: str = "guest",
+        session_id: str = "default_session",
+        is_persistent: bool = False,
+        allowed_users: List[str] = None
+    ) -> Dict:
+        if allowed_users is None:
+            allowed_users = []
+            
         source_filename = os.path.basename(pdf_path)
 
         console.rule(f"[bold blue]Ingesting: {source_filename}")
@@ -75,6 +85,11 @@ class IngestPipeline:
 
         for chunk, embedding in zip(chunks, all_embeddings):
             chunk["embedding"] = embedding
+            # Add ACL and session metadata
+            chunk["metadata"]["owner_id"] = owner_id
+            chunk["metadata"]["session_id"] = session_id
+            chunk["metadata"]["is_persistent"] = is_persistent
+            chunk["metadata"]["allowed_users"] = allowed_users
 
         console.print(f"  ✓ {len(all_embeddings)} embedding(s) generated\n")
 

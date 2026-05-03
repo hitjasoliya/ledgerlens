@@ -2,12 +2,17 @@ import { useCallback, useRef, useState } from 'react'
 import type { IngestResponse } from '../types'
 import { ingestPdf } from '../api'
 
-export default function IngestPanel() {
+export default function IngestPanel({ role, userId, sessionId }: { role: string, userId: string, sessionId: string }) {
   const [file, setFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<IngestResponse | null>(null)
   const [dragActive, setDragActive] = useState(false)
+  
+  // Admin fields
+  const [isPersistent, setIsPersistent] = useState(false)
+  const [allowedUsers, setAllowedUsers] = useState('')
+
   const fileRef = useRef<HTMLInputElement>(null)
 
   const handleFile = (f: File | null) => {
@@ -33,7 +38,9 @@ export default function IngestPanel() {
     setResult(null)
     setLoading(true)
     try {
-      const data = await ingestPdf(file)
+      const p = role === 'admin' ? isPersistent : false
+      const a = role === 'admin' ? allowedUsers : ''
+      const data = await ingestPdf(file, userId, sessionId, p, a)
       setResult(data)
       setFile(null)
       if (fileRef.current) fileRef.current.value = ''
@@ -87,6 +94,32 @@ export default function IngestPanel() {
           </div>
         )}
       </div>
+
+      {role === 'admin' && (
+        <div style={{ marginTop: '10px', padding: '10px', background: 'rgba(0,0,0,0.2)', borderRadius: '6px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', fontSize: '13px', cursor: 'pointer', marginBottom: '8px' }}>
+            <input 
+              type="checkbox" 
+              checked={isPersistent} 
+              onChange={e => setIsPersistent(e.target.checked)} 
+              style={{ marginRight: '8px' }} 
+            />
+            Make Persistent (Saved across sessions)
+          </label>
+          {isPersistent && (
+            <div>
+              <label style={{ fontSize: '11px', color: '#888' }}>Allowed Users (comma separated IDs)</label>
+              <input 
+                type="text" 
+                value={allowedUsers} 
+                onChange={e => setAllowedUsers(e.target.value)}
+                placeholder="user_123, user_456"
+                style={{ width: '100%', padding: '6px', background: '#222', border: '1px solid #444', color: '#fff', borderRadius: '4px', marginTop: '4px', fontSize: '13px' }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       <button
         type="button"

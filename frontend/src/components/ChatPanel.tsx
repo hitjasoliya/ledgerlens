@@ -7,7 +7,7 @@ function nextId(): string {
   return `msg-${Date.now()}-${++msgCounter}`
 }
 
-export default function ChatPanel() {
+export default function ChatPanel({ userId, sessionId }: { userId: string, sessionId: string }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -34,7 +34,7 @@ export default function ChatPanel() {
     setLoading(true)
 
     try {
-      const res = await sendMessage(text)
+      const res = await sendMessage(text, userId, sessionId)
       const assistantMsg: Message = {
         id: nextId(),
         role: 'assistant',

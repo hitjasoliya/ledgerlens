@@ -3,6 +3,8 @@ from pydantic import BaseModel, Field
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
+    user_id: str = "guest"
+    session_id: str = "default_session"
 
 
 class Citation(BaseModel):

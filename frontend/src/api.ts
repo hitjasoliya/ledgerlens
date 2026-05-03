@@ -14,11 +14,11 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
-export async function sendMessage(message: string): Promise<ChatResponse> {
+export async function sendMessage(message: string, userId: string, sessionId: string): Promise<ChatResponse> {
   const res = await fetch(`${apiBase}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, user_id: userId, session_id: sessionId }),
   })
   if (!res.ok) throw new Error(await parseError(res))
   return (await res.json()) as ChatResponse
@@ -29,13 +29,34 @@ export async function clearConversation(): Promise<void> {
   if (!res.ok) throw new Error(await parseError(res))
 }
 
-export async function ingestPdf(file: File): Promise<IngestResponse> {
+export async function ingestPdf(
+  file: File, 
+  userId: string, 
+  sessionId: string, 
+  isPersistent: boolean, 
+  allowedUsers: string
+): Promise<IngestResponse> {
   const form = new FormData()
   form.append('file', file)
+  form.append('user_id', userId)
+  form.append('session_id', sessionId)
+  form.append('is_persistent', isPersistent ? 'true' : 'false')
+  form.append('allowed_users', allowedUsers)
+  
   const res = await fetch(`${apiBase}/api/ingest`, {
     method: 'POST',
     body: form,
   })
   if (!res.ok) throw new Error(await parseError(res))
   return (await res.json()) as IngestResponse
+}
+
+export async function endSession(sessionId: string): Promise<void> {
+  const form = new FormData()
+  form.append('session_id', sessionId)
+  const res = await fetch(`${apiBase}/api/session/end`, { 
+    method: 'POST',
+    body: form 
+  })
+  if (!res.ok) throw new Error(await parseError(res))
 }

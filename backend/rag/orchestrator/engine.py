@@ -18,7 +18,7 @@ class RAGEngine:
         self.es_client = ESClient()
         self.conversation_history: List[Dict[str, str]] = []
 
-    def chat(self, question: str) -> Dict[str, Any]:
+    def chat(self, question: str, current_user_id: str = "guest", current_session_id: str = "default_session") -> Dict[str, Any]:
         self._append_to_history("user", question.strip())
 
         try:
@@ -33,6 +33,8 @@ class RAGEngine:
                 query_embedding=query_embedding,
                 query_text=question,
                 top_k=TOP_K,
+                current_user_id=current_user_id,
+                current_session_id=current_session_id,
             )
         except Exception as exc:
             return self._error_response(

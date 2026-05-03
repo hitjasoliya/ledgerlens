@@ -43,6 +43,10 @@ class ESClient:
                             "chunk_id": {"type": "keyword"},
                             "source": {"type": "keyword"},
                             "chunk_type": {"type": "keyword"},
+                            "session_id": {"type": "keyword"},
+                            "owner_id": {"type": "keyword"},
+                            "is_persistent": {"type": "boolean"},
+                            "allowed_users": {"type": "keyword"}
                         },
                     },
                 }
@@ -108,7 +112,47 @@ class ESClient:
         query_embedding: List[float],
         query_text: str,
         top_k: int = 5,
+        current_user_id: str = "guest",
+        current_session_id: str = "default_session",
     ) -> List[Dict[str, Any]]:
+        # Strict RBAC Filter
+        filter_clause = {
+            "bool": {
+                "should": [
+                    # 1. Ephemeral chunks belonging to this exact session
+                    {
+                        "bool": {
+                            "must": [
+                                { "term": { "metadata.is_persistent": False } },
+                                { "term": { "metadata.session_id": current_session_id } }
+                            ]
+                        }
+                    },
+                    # 2. Any chunk owned by the user
+                    { "term": { "metadata.owner_id": current_user_id } },
+                    # 3. Persistent chunks where user is explicitly allowed
+                    {
+                        "bool": {
+                            "must": [
+                                { "term": { "metadata.is_persistent": True } },
+                                { "term": { "metadata.allowed_users": current_user_id } }
+                            ]
+                        }
+                    },
+                    # 4. Public persistent chunks (if allowed_users contains "all")
+                    {
+                        "bool": {
+                            "must": [
+                                { "term": { "metadata.is_persistent": True } },
+                                { "term": { "metadata.allowed_users": "all" } }
+                            ]
+                        }
+                    }
+                ],
+                "minimum_should_match": 1
+            }
+        }
+
         window = max(top_k * _CANDIDATE_MULT, 50)
         knn_body: Dict[str, Any] = {
             "size": window,
@@ -117,12 +161,18 @@ class ESClient:
                 "query_vector": query_embedding,
                 "k": window,
                 "num_candidates": min(10000, window * 10),
+                "filter": filter_clause
             },
             "_source": ["text", "metadata"],
         }
         match_body: Dict[str, Any] = {
             "size": window,
-            "query": {"match": {"text": {"query": query_text}}},
+            "query": {
+                "bool": {
+                    "must": [{"match": {"text": {"query": query_text}}}],
+                    "filter": filter_clause
+                }
+            },
             "_source": ["text", "metadata"],
         }
         try:
@@ -173,6 +223,23 @@ class ESClient:
             return self._rrf_merge([knn_order], id_to_row, top_k)
         return self._rrf_merge([knn_order, txt_order], id_to_row, top_k)
 
+
+    def delete_session_chunks(self, session_id: str) -> int:
+        body = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"term": {"metadata.session_id": session_id}},
+                        {"term": {"metadata.is_persistent": False}}
+                    ]
+                }
+            }
+        }
+        try:
+            res = self.es.delete_by_query(index=self.index_name, body=body)
+            return res.get("deleted", 0)
+        except Exception as exc:
+            raise RuntimeError(f"[ES] Failed to delete session chunks: {exc}") from exc
 
 if __name__ == "__main__":
     client = ESClient()

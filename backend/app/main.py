@@ -10,7 +10,7 @@ import os
 import tempfile
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import (
@@ -56,7 +56,11 @@ def health() -> HealthResponse:
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(body: ChatRequest) -> ChatResponse:
     engine = get_engine()
-    result = engine.chat(body.message)
+    result = engine.chat(
+        body.message, 
+        current_user_id=body.user_id, 
+        current_session_id=body.session_id
+    )
     cites_raw = result.get("citations") or []
     citations = [
         Citation(page=int(c["page"]), chunk_id=str(c["chunk_id"]))
@@ -77,7 +81,13 @@ def clear_chat() -> ClearChatResponse:
 
 
 @app.post("/api/ingest", response_model=IngestResponse)
-async def ingest(file: UploadFile = File(...)) -> IngestResponse:
+async def ingest(
+    file: UploadFile = File(...),
+    user_id: str = Form("guest"),
+    session_id: str = Form("default_session"),
+    is_persistent: bool = Form(False),
+    allowed_users: str = Form("")
+) -> IngestResponse:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Expected a PDF file")
 
@@ -89,7 +99,14 @@ async def ingest(file: UploadFile = File(...)) -> IngestResponse:
             tmp.write(content)
 
         pipeline = IngestPipeline()
-        summary = pipeline.run(tmp_path)
+        allowed_users_list = [u.strip() for u in allowed_users.split(",") if u.strip()]
+        summary = pipeline.run(
+            tmp_path,
+            owner_id=user_id,
+            session_id=session_id,
+            is_persistent=is_persistent,
+            allowed_users=allowed_users_list
+        )
         return IngestResponse(
             source=str(summary["source"]),
             pages_parsed=int(summary["pages_parsed"]),
@@ -103,3 +120,12 @@ async def ingest(file: UploadFile = File(...)) -> IngestResponse:
     finally:
         if tmp_path and os.path.isfile(tmp_path):
             os.unlink(tmp_path)
+
+
+@app.post("/api/session/end", response_model=ClearChatResponse)
+def end_session(session_id: str = Form(...)) -> ClearChatResponse:
+    engine = get_engine()
+    deleted = engine.es_client.delete_session_chunks(session_id)
+    print(f"Session {session_id} ended. Deleted {deleted} non-persistent chunks.")
+    engine.clear_history()
+    return ClearChatResponse(ok=True)
