@@ -1,6 +1,6 @@
-import type { ChatResponse, IngestResponse } from './types'
+import type { ChatResponse, IngestResponse } from '../types'
 
-const apiBase = import.meta.env.VITE_API_URL ?? ''
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -14,8 +14,12 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
-export async function sendMessage(message: string, userId: string, sessionId: string): Promise<ChatResponse> {
-  const res = await fetch(`${apiBase}/api/chat`, {
+export async function sendMessage(
+  message: string,
+  userId: string,
+  sessionId: string,
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, user_id: userId, session_id: sessionId }),
@@ -25,25 +29,27 @@ export async function sendMessage(message: string, userId: string, sessionId: st
 }
 
 export async function clearConversation(): Promise<void> {
-  const res = await fetch(`${apiBase}/api/chat/clear`, { method: 'POST' })
+  const res = await fetch(`${API_BASE}/api/chat/clear`, { method: 'POST' })
   if (!res.ok) throw new Error(await parseError(res))
 }
 
-export async function ingestPdf(
-  file: File, 
-  userId: string, 
-  sessionId: string, 
-  isPersistent: boolean, 
-  allowedUsers: string
-): Promise<IngestResponse> {
+export type IngestOptions = {
+  file: File
+  userId: string
+  sessionId: string
+  isPersistent: boolean
+  allowedUsers: string[]
+}
+
+export async function ingestPdf(opts: IngestOptions): Promise<IngestResponse> {
   const form = new FormData()
-  form.append('file', file)
-  form.append('user_id', userId)
-  form.append('session_id', sessionId)
-  form.append('is_persistent', isPersistent ? 'true' : 'false')
-  form.append('allowed_users', allowedUsers)
-  
-  const res = await fetch(`${apiBase}/api/ingest`, {
+  form.append('file', opts.file)
+  form.append('user_id', opts.userId)
+  form.append('session_id', opts.sessionId)
+  form.append('is_persistent', opts.isPersistent ? 'true' : 'false')
+  form.append('allowed_users', opts.allowedUsers.join(','))
+
+  const res = await fetch(`${API_BASE}/api/ingest`, {
     method: 'POST',
     body: form,
   })
@@ -54,9 +60,18 @@ export async function ingestPdf(
 export async function endSession(sessionId: string): Promise<void> {
   const form = new FormData()
   form.append('session_id', sessionId)
-  const res = await fetch(`${apiBase}/api/session/end`, { 
+  const res = await fetch(`${API_BASE}/api/session/end`, {
     method: 'POST',
-    body: form 
+    body: form,
   })
   if (!res.ok) throw new Error(await parseError(res))
+}
+
+export async function checkHealth(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/health`)
+    return res.ok
+  } catch {
+    return false
+  }
 }

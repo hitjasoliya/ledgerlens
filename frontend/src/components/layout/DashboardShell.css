@@ -1,0 +1,230 @@
+.dash {
+  display: flex;
+  height: 100dvh;
+  width: 100%;
+  background: var(--color-bg);
+  overflow: hidden;
+}
+
+.dash__nav {
+  width: 232px;
+  min-width: 232px;
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-text);
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--color-sidebar-border);
+}
+
+.dash__nav-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 18px 12px;
+  border-bottom: 1px solid var(--color-sidebar-border);
+}
+
+.dash__nav-mobile-close {
+  display: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--color-sidebar-muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.dash__nav-mobile-close:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text);
+}
+
+.dash__tabs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 10px;
+  overflow-y: auto;
+}
+
+.dash__tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  color: var(--color-sidebar-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dash__tab:hover {
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text);
+}
+
+.dash__tab.is-active {
+  background: var(--color-sidebar-active);
+  color: var(--color-coral);
+}
+
+.dash__tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+
+.dash__nav-footer {
+  border-top: 1px solid var(--color-sidebar-border);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dash__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.dash__user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.dash__user-name {
+  font-size: 13px;
+  color: var(--color-sidebar-text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.dash__logout {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--color-sidebar-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.dash__logout:hover {
+  background: var(--color-sidebar-hover);
+  color: #ff8b85;
+}
+
+.dash__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.dash__topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  z-index: 1;
+}
+
+.dash__menu-btn {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  align-items: center;
+  justify-content: center;
+}
+
+.dash__menu-btn:hover {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+
+.dash__breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+
+.dash__breadcrumb-app {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.dash__breadcrumb-sep {
+  color: var(--color-text-subtle);
+}
+
+.dash__breadcrumb-tab {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.dash__content {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.dash__overlay {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .dash__menu-btn {
+    display: inline-flex;
+  }
+
+  .dash__nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    z-index: 50;
+    width: 260px;
+  }
+
+  .dash__nav.is-open {
+    transform: translateX(0);
+  }
+
+  .dash__nav-mobile-close {
+    display: inline-flex;
+  }
+
+  .dash__overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    z-index: 40;
+    animation: fadeIn 0.15s ease;
+  }
+}

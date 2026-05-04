@@ -1,0 +1,109 @@
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: background 0.15s ease, color 0.15s ease,
+    border-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  user-select: none;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn--sm {
+  padding: 6px 12px;
+  font-size: 13px;
+  height: 32px;
+}
+
+.btn--md {
+  padding: 8px 16px;
+  font-size: 14px;
+  height: 40px;
+}
+
+.btn--lg {
+  padding: 12px 22px;
+  font-size: 15px;
+  height: 48px;
+}
+
+.btn--full {
+  width: 100%;
+}
+
+.btn--primary {
+  background: var(--color-coral);
+  color: #fff;
+  border-color: var(--color-coral);
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: var(--color-coral-hover);
+  border-color: var(--color-coral-hover);
+  box-shadow: var(--shadow-coral);
+}
+
+.btn--secondary {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+  border-color: var(--color-border-strong);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
+.btn--ghost:hover:not(:disabled) {
+  background: var(--color-bg-subtle);
+  color: var(--color-text);
+}
+
+.btn--danger {
+  background: transparent;
+  color: var(--color-danger);
+  border-color: rgba(192, 71, 62, 0.3);
+}
+
+.btn--danger:hover:not(:disabled) {
+  background: rgba(192, 71, 62, 0.08);
+  border-color: rgba(192, 71, 62, 0.5);
+}
+
+.btn--dark {
+  background: #2a2a2a;
+  color: #ececec;
+  border-color: transparent;
+}
+
+.btn--dark:hover:not(:disabled) {
+  background: #1a1a1a;
+}
+
+.btn__label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.btn__spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: spin 0.6s linear infinite;
+  opacity: 0.7;
+}

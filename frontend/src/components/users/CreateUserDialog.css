@@ -1,0 +1,61 @@
+.create-user {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.create-user__role {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.create-user__role-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+  position: relative;
+}
+
+.create-user__role-opt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.create-user__role-opt:hover {
+  border-color: var(--color-coral-border);
+}
+
+.create-user__role-opt.is-active {
+  border-color: var(--color-coral-border);
+  background: var(--color-coral-soft);
+}
+
+.create-user__role-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--color-text);
+}
+
+.create-user__role-opt.is-active .create-user__role-title {
+  color: var(--color-coral);
+}
+
+.create-user__role-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.create-user__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 4px;
+}
