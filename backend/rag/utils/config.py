@@ -16,9 +16,18 @@ CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
 
 TOP_K: int = int(os.getenv("TOP_K", "5"))
 
-EMBEDDING_MODEL: str = "models/gemini-embedding-001"
-EMBEDDING_DIMS: int = 768
+EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "embeddinggemma")
+EMBEDDING_DIMS: int = int(os.getenv("EMBEDDING_DIMS", "768"))
+OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 GENERATION_MODEL: str = "models/gemini-3.1-flash-lite-preview"
+
+LAYOUT_MODEL: str = os.getenv("LAYOUT_MODEL", "lp://PubLayNet/ppyolov2_r50vd_dcn_365e")
+LAYOUT_CONFIDENCE_THRESHOLD: float = float(os.getenv("LAYOUT_CONFIDENCE_THRESHOLD", "0.5"))
+RENDER_DPI: int = int(os.getenv("RENDER_DPI", "200"))
+TABLE_MODEL: str = os.getenv("TABLE_MODEL", "microsoft/table-transformer-structure-recognition-v1.1-all")
+TABLE_DEVICE: str = os.getenv("TABLE_DEVICE", "cpu")
+FIGURE_CAPTION_MAX_CHARS: int = int(os.getenv("FIGURE_CAPTION_MAX_CHARS", "400"))
+
 
 
 SYSTEM_PROMPT: str = (

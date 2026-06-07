@@ -25,7 +25,7 @@ export function ChatMessage({ message, userName }: Props) {
       </div>
       <div className="chat-msg__content">
         <div className="chat-msg__author">
-          {isUser ? userName : 'adani_rag'}
+          {isUser ? userName : 'CapitalQuery'}
           <span className="chat-msg__time">{formatTime(message.timestamp)}</span>
         </div>
         {message.attachedFile && (

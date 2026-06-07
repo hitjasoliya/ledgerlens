@@ -33,12 +33,12 @@ export function Login() {
     return <Navigate to={user.role === 'admin' ? '/admin' : '/employee'} replace />
   }
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
-      const u = login(username.trim(), password, role)
+      const u = await login(username.trim(), password, role)
       navigate(u.role === 'admin' ? '/admin' : '/employee', { replace: true })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

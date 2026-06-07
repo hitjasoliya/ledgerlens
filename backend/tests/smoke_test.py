@@ -14,7 +14,7 @@ def generate_fake_embedding(seed: float = 0.1) -> list:
 def run_smoke_test() -> bool:
     passed = 0
     failed = 0
-    total = 4
+    total = 6
 
     def check(name: str, condition: bool, detail: str = "") -> None:
         nonlocal passed, failed
@@ -66,6 +66,10 @@ def run_smoke_test() -> bool:
                 "chunk_id": "p3_c0",
                 "source": "smoke_test.pdf",
                 "chunk_type": "body",
+                "owner_id": "guest",
+                "session_id": "default_session",
+                "is_persistent": True,
+                "allowed_users": ["guest"]
             },
         },
         {
@@ -77,6 +81,10 @@ def run_smoke_test() -> bool:
                 "chunk_id": "p7_c0",
                 "source": "smoke_test.pdf",
                 "chunk_type": "body",
+                "owner_id": "guest",
+                "session_id": "default_session",
+                "is_persistent": True,
+                "allowed_users": ["guest"]
             },
         },
     ]
@@ -114,6 +122,30 @@ def run_smoke_test() -> bool:
                 print(f"      \"{r['text'][:80]}...\"")
     except Exception as exc:
         check("Hybrid search", False, str(exc))
+
+    print("\nTest 5: Running page renderer and layout detector...")
+    try:
+        import os
+        from rag.ingestion.page_renderer import PageRenderer
+        from rag.ingestion.layout_detector import LayoutDetector
+
+        pdf_path = os.path.join(
+            os.path.dirname(__file__),
+            "../sample_pdfs/Document-Grounded Conversational AI using RAG.pdf"
+        )
+        pdf_path = os.path.abspath(pdf_path)
+
+        renderer = PageRenderer()
+        detector = LayoutDetector()
+
+        pages = renderer.render(pdf_path)
+        check("Page rendering", len(pages) > 0, f"Expected >0 pages, got {len(pages)}")
+
+        if len(pages) > 0:
+            regions = detector.detect(pages[0]["image"], pages[0]["page"])
+            check("Layout region detection", len(regions) > 0, f"Expected >0 regions, got {len(regions)}")
+    except Exception as exc:
+        check("Layout rendering and detection", False, str(exc))
 
     print()
     print("=" * 60)

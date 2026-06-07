@@ -4,9 +4,10 @@ import type { DashboardTab } from '../components/layout/DashboardShell'
 import { ChatShell } from '../components/chat/ChatShell'
 import { AdminFileManager } from '../components/files/AdminFileManager'
 import { UserManager } from '../components/users/UserManager'
-import { MessageIcon, FolderIcon, UsersIcon } from '../components/ui/Icon'
+import { MessageIcon, FolderIcon, UsersIcon, SparklesIcon } from '../components/ui/Icon'
 import { useAuth } from '../auth/useAuth'
 import { useAdminFiles } from '../services/hooks'
+import { LayoutInspector } from '../components/layout/LayoutInspector'
 
 export function AdminDashboard() {
   const { user } = useAuth()
@@ -39,6 +40,12 @@ export function AdminDashboard() {
         label: 'Users',
         icon: <UsersIcon size={16} />,
         content: <UserManager currentUserId={user.id} />,
+      },
+      {
+        id: 'inspector',
+        label: 'Layout Inspector',
+        icon: <SparklesIcon size={16} />,
+        content: <LayoutInspector />,
       },
     ]
   }, [user, files])

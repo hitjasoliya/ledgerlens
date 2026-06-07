@@ -1,6 +1,6 @@
 import type { ChatResponse, IngestResponse } from '../types'
 
-const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+export const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 
 async function parseError(res: Response): Promise<string> {
   try {
@@ -14,6 +14,21 @@ async function parseError(res: Response): Promise<string> {
   }
 }
 
+function getAuthHeader(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem('capitalquery.session')
+    if (raw) {
+      const parsed = JSON.parse(raw) as { token?: string }
+      if (parsed.token) {
+        return { Authorization: `Bearer ${parsed.token}` }
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return {}
+}
+
 export async function sendMessage(
   message: string,
   userId: string,
@@ -21,7 +36,10 @@ export async function sendMessage(
 ): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeader()
+    },
     body: JSON.stringify({ message, user_id: userId, session_id: sessionId }),
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -29,7 +47,10 @@ export async function sendMessage(
 }
 
 export async function clearConversation(): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/chat/clear`, { method: 'POST' })
+  const res = await fetch(`${API_BASE}/api/chat/clear`, { 
+    method: 'POST',
+    headers: { ...getAuthHeader() }
+  })
   if (!res.ok) throw new Error(await parseError(res))
 }
 
@@ -51,6 +72,7 @@ export async function ingestPdf(opts: IngestOptions): Promise<IngestResponse> {
 
   const res = await fetch(`${API_BASE}/api/ingest`, {
     method: 'POST',
+    headers: { ...getAuthHeader() },
     body: form,
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -62,6 +84,7 @@ export async function endSession(sessionId: string): Promise<void> {
   form.append('session_id', sessionId)
   const res = await fetch(`${API_BASE}/api/session/end`, {
     method: 'POST',
+    headers: { ...getAuthHeader() },
     body: form,
   })
   if (!res.ok) throw new Error(await parseError(res))
@@ -74,4 +97,70 @@ export async function checkHealth(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// Backend Auth APIs
+export async function loginUser(
+  username: string,
+  password: string,
+  role: string,
+): Promise<{ access_token: string; user: any }> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, role }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return (await res.json()) as { access_token: string; user: any }
+}
+
+export async function getProfile(): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/auth/me`, {
+    method: 'GET',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return await res.json()
+}
+
+export async function fetchUsers(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/users`, {
+    method: 'GET',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return (await res.json()) as any[]
+}
+
+export async function saveUser(input: any): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/users`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      ...getAuthHeader()
+    },
+    body: JSON.stringify(input),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return await res.json()
+}
+
+export async function removeUser(userId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/users/${userId}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+}
+
+export async function previewLayout(file: File): Promise<any> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/api/admin/layout-preview`, {
+    method: 'POST',
+    headers: { ...getAuthHeader() },
+    body: form,
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return await res.json()
 }

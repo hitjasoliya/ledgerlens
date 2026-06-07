@@ -43,6 +43,7 @@ class ESClient:
                             "chunk_id": {"type": "keyword"},
                             "source": {"type": "keyword"},
                             "chunk_type": {"type": "keyword"},
+                            "image_path": {"type": "keyword"},
                             "session_id": {"type": "keyword"},
                             "owner_id": {"type": "keyword"},
                             "is_persistent": {"type": "boolean"},
@@ -197,6 +198,7 @@ class ESClient:
                     "chunk_id": meta["chunk_id"],
                     "source": meta.get("source", ""),
                     "chunk_type": meta.get("chunk_type", "body"),
+                    "image_path": meta.get("image_path"),
                     "score": 0.0,
                 }
 
@@ -212,6 +214,7 @@ class ESClient:
                     "chunk_id": meta["chunk_id"],
                     "source": meta.get("source", ""),
                     "chunk_type": meta.get("chunk_type", "body"),
+                    "image_path": meta.get("image_path"),
                     "score": 0.0,
                 }
 

@@ -32,12 +32,12 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setSubmitting(true)
     setError(null)
     try {
-      createUser({
+      await createUser({
         username: username.trim(),
         password,
         role,

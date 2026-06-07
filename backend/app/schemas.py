@@ -23,6 +23,8 @@ class IngestResponse(BaseModel):
     pages_parsed: int
     chunks_created: int
     chunks_indexed: int
+    pages_failed: int = 0
+
 
 
 class ClearChatResponse(BaseModel):
@@ -31,3 +33,29 @@ class ClearChatResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+class UserResponse(BaseModel):
+    id: str
+    username: str
+    role: str
+    createdAt: int
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+class UserCreateRequest(BaseModel):
+    username: str
+    password: str
+    role: str
+

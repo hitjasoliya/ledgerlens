@@ -23,6 +23,20 @@ class Generator:
                 max_output_tokens=1024,
             ),
         )
+        self.greeting_model = genai.GenerativeModel(
+            model_name=GENERATION_MODEL,
+            system_instruction=(
+                "You are CapitalQuery, a helpful and precise assistant for analyzing financial documents. "
+                "The user is saying a greeting, pleasantry, or other casual remark. "
+                "Respond in a warm, polite, professional, and concise manner. "
+                "Keep your response to 1-2 sentences. "
+                "Invite the user to ask questions about their uploaded financial documents."
+            ),
+            generation_config=genai.GenerationConfig(
+                temperature=0.7,
+                max_output_tokens=150,
+            ),
+        )
 
     def _build_context_string(self, context_chunks: List[Dict[str, Any]]) -> str:
         parts: List[str] = []
@@ -58,6 +72,26 @@ class Generator:
         except Exception as exc:
             raise RuntimeError(
                 f"[Generator] Failed to generate answer: {exc}"
+            ) from exc
+
+    def generate_greeting(
+        self,
+        question: str,
+        conversation_history: List[Dict[str, str]] | None = None,
+    ) -> str:
+        history = []
+        if conversation_history:
+            for msg in conversation_history:
+                role = "model" if msg["role"] == "assistant" else "user"
+                history.append({"role": role, "parts": [msg["content"]]})
+
+        try:
+            chat = self.greeting_model.start_chat(history=history)
+            response = chat.send_message(question)
+            return response.text.strip()
+        except Exception as exc:
+            raise RuntimeError(
+                f"[Generator] Failed to generate greeting: {exc}"
             ) from exc
 
 

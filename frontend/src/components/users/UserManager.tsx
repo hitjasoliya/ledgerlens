@@ -18,10 +18,14 @@ export function UserManager({ currentUserId }: Props) {
   const users = useUsers()
   const [open, setOpen] = useState(false)
 
-  const handleDelete = (user: SafeUser) => {
+  const handleDelete = async (user: SafeUser) => {
     if (user.id === currentUserId) return
     if (!confirm(`Remove user "${user.username}"?`)) return
-    deleteUser(user.id)
+    try {
+      await deleteUser(user.id)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e))
+    }
   }
 
   return (

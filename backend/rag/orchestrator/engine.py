@@ -21,6 +21,23 @@ class RAGEngine:
     def chat(self, question: str, current_user_id: str = "guest", current_session_id: str = "default_session") -> Dict[str, Any]:
         self._append_to_history("user", question.strip())
 
+        if self._is_greeting_or_pleasantry(question):
+            try:
+                history_for_gen = self.conversation_history[:-1]
+                answer = self.generator.generate_greeting(
+                    question=question,
+                    conversation_history=history_for_gen if history_for_gen else None,
+                )
+            except Exception:
+                answer = "Hello! How can I help you today? You can ask me questions about your financial documents."
+            
+            self._append_to_history("assistant", answer)
+            return {
+                "answer": answer,
+                "citations": [],
+                "chunks_used": 0,
+            }
+
         try:
             query_embedding = self.embedder.embed_query(question)
         except Exception as exc:
@@ -66,10 +83,15 @@ class RAGEngine:
 
         self._append_to_history("assistant", answer)
 
+        chunks_used = len(retrieved_chunks)
+        if "not found in the document" in answer.lower() or not citations:
+            citations = []
+            chunks_used = 0
+
         return {
             "answer": answer,
             "citations": citations,
-            "chunks_used": len(retrieved_chunks),
+            "chunks_used": chunks_used,
         }
 
     def _append_to_history(self, role: str, content: str) -> None:
@@ -125,6 +147,36 @@ class RAGEngine:
             "citations": [],
             "chunks_used": 0,
         }
+
+    def _is_greeting_or_pleasantry(self, query: str) -> bool:
+        q = query.strip().lower().rstrip("?.!")
+        
+        common_phrases = {
+            "hi", "hello", "hey", "hola", "greetings", "good morning", 
+            "good afternoon", "good evening", "howdy", "yo", "sup",
+            "how are you", "hows it going", "how are you doing", "whats up",
+            "hi there", "hello there", "hey there", "thanks", "thank you",
+            "thank you so much", "perfect", "awesome", "great", "ok", "okay",
+            "bye", "goodbye", "good day"
+        }
+        
+        if q in common_phrases:
+            return True
+            
+        greeting_patterns = [
+            r"^(hi|hello|hey|greetings|good\s+morning|good\s+afternoon|good\s+evening|howdy|yo)(\s+(there|buddy|friend|team|all))?$",
+            r"^how\s+are\s+you(\s+doing)?$",
+            r"^hows\s+it\s+going$",
+            r"^whats\s+up$",
+            r"^thank\s+you(\s+so\s+much)?$",
+            r"^thanks(\s+a\s+lot)?$",
+        ]
+        
+        for pattern in greeting_patterns:
+            if re.match(pattern, q):
+                return True
+                
+        return False
 
 
 if __name__ == "__main__":

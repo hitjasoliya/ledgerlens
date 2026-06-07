@@ -28,7 +28,7 @@ export function Logo({ size = 'md', variant = 'light', showWordmark = true }: Pr
       </div>
       {showWordmark && (
         <span className="logo__wordmark">
-          adani<span className="logo__accent">_rag</span>
+          Capital<span className="logo__accent">Query</span>
         </span>
       )}
     </div>

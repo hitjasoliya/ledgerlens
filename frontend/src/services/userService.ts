@@ -1,62 +1,45 @@
-import type { Role, SafeUser, User } from '../types'
-import { uid } from '../lib/ids'
-import { readJSON, StorageKeys, writeJSON } from '../lib/storage'
+import type { Role, SafeUser } from '../types'
+import { fetchUsers, saveUser, removeUser, loginUser } from '../lib/api'
 import { bus, Topics } from '../lib/eventBus'
 
-const SEED_ADMIN: User = {
-  id: '1',
-  username: 'admin',
-  password: 'admin123',
-  role: 'admin',
-  createdAt: Date.now(),
-}
-
-function toSafe(user: User): SafeUser {
-  const { password: _password, ...rest } = user
-  void _password
-  return rest
-}
-
-let seeded = false
-
 export function ensureSeed(): void {
-  if (seeded) return
-  const users = readJSON<User[]>(StorageKeys.users, [])
-  if (users.length === 0) {
-    writeJSON(StorageKeys.users, [SEED_ADMIN])
+  // Backend database seeds itself on startup.
+}
+
+export async function listUsers(): Promise<SafeUser[]> {
+  try {
+    return await fetchUsers()
+  } catch (e) {
+    console.error("Failed to list users", e)
+    return []
   }
-  seeded = true
 }
 
-export function listUsers(): SafeUser[] {
-  ensureSeed()
-  return readJSON<User[]>(StorageKeys.users, []).map(toSafe)
+export async function listEmployees(): Promise<SafeUser[]> {
+  const users = await listUsers()
+  return users.filter((u) => u.role === 'employee')
 }
 
-export function listEmployees(): SafeUser[] {
-  return listUsers().filter((u) => u.role === 'employee')
+export async function findById(id: string): Promise<SafeUser | null> {
+  const users = await listUsers()
+  return users.find((x) => x.id === id) ?? null
 }
 
-export function findById(id: string): SafeUser | null {
-  ensureSeed()
-  const u = readJSON<User[]>(StorageKeys.users, []).find((x) => x.id === id)
-  return u ? toSafe(u) : null
-}
-
-export function authenticate(
+export async function authenticate(
   username: string,
   password: string,
   role: Role,
-): SafeUser | null {
-  ensureSeed()
-  const users = readJSON<User[]>(StorageKeys.users, [])
-  const match = users.find(
-    (u) =>
-      u.username.toLowerCase() === username.toLowerCase() &&
-      u.password === password &&
-      u.role === role,
-  )
-  return match ? toSafe(match) : null
+): Promise<{ access_token: string; user: SafeUser } | null> {
+  try {
+    const res = await loginUser(username, password, role)
+    return {
+      access_token: res.access_token,
+      user: res.user as SafeUser
+    }
+  } catch (e) {
+    console.error("Authentication failed", e)
+    return null
+  }
 }
 
 export type CreateUserInput = {
@@ -66,32 +49,17 @@ export type CreateUserInput = {
   createdBy?: string
 }
 
-export function createUser(input: CreateUserInput): SafeUser {
-  ensureSeed()
-  const users = readJSON<User[]>(StorageKeys.users, [])
-  const exists = users.some(
-    (u) => u.username.toLowerCase() === input.username.toLowerCase(),
-  )
-  if (exists) throw new Error('Username already exists')
-  if (!input.username.trim()) throw new Error('Username is required')
-  if (input.password.length < 4) throw new Error('Password must be at least 4 characters')
-
-  const newUser: User = {
-    id: uid('user'),
+export async function createUser(input: CreateUserInput): Promise<SafeUser> {
+  const newUser = await saveUser({
     username: input.username.trim(),
     password: input.password,
     role: input.role,
-    createdAt: Date.now(),
-    createdBy: input.createdBy,
-  }
-  writeJSON(StorageKeys.users, [...users, newUser])
+  })
   bus.emit(Topics.users)
-  return toSafe(newUser)
+  return newUser as SafeUser
 }
 
-export function deleteUser(id: string): void {
-  const users = readJSON<User[]>(StorageKeys.users, [])
-  const filtered = users.filter((u) => u.id !== id)
-  writeJSON(StorageKeys.users, filtered)
+export async function deleteUser(id: string): Promise<void> {
+  await removeUser(id)
   bus.emit(Topics.users)
 }

@@ -32,7 +32,7 @@ export function Landing() {
         <section className="landing__hero">
           <div className="landing__badge">
             <SparklesIcon size={14} />
-            <span>Enterprise RAG · Powered by Adani</span>
+            <span>Enterprise RAG · CapitalQuery</span>
           </div>
           <h1 className="landing__title">
             Your documents,
@@ -40,7 +40,7 @@ export function Landing() {
             <span className="landing__title-accent">intelligently answered.</span>
           </h1>
           <p className="landing__subtitle">
-            adani_rag transforms your enterprise documents into a conversational
+            CapitalQuery transforms your enterprise documents into a conversational
             knowledge base. Upload, control access, and ask anything — with
             page-level citations grounded in your data.
           </p>
@@ -91,7 +91,7 @@ export function Landing() {
       </main>
 
       <footer className="landing__footer">
-        <span>© {new Date().getFullYear()} adani_rag</span>
+        <span>© {new Date().getFullYear()} CapitalQuery</span>
         <span className="landing__footer-dot">·</span>
         <span>Built for enterprise knowledge teams</span>
       </footer>

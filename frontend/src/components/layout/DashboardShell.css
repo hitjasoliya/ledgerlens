@@ -14,6 +14,19 @@
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--color-sidebar-border);
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              min-width 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
+              opacity 0.2s ease, 
+              border-color 0.2s ease;
+}
+
+.dash__nav.is-collapsed {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  border-right-color: transparent;
+  overflow: hidden;
 }
 
 .dash__nav-top {
@@ -149,13 +162,17 @@
 }
 
 .dash__menu-btn {
-  display: none;
+  display: inline-flex;
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
   color: var(--color-text-muted);
   align-items: center;
   justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
 }
 
 .dash__menu-btn:hover {

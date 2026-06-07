@@ -76,7 +76,7 @@ export function ChatWindow({
           <div className="chat-window__empty">
             <EmptyState
               icon={<BotIcon size={28} />}
-              title="Hi, I'm adani_rag"
+              title="Hi, I'm CapitalQuery"
               description={
                 allowFile
                   ? 'Ask me about any document you have access to. You can also attach a PDF for this conversation.'

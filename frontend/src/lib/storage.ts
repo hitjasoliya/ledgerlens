@@ -1,4 +1,4 @@
-const NAMESPACE = 'adani_rag'
+const NAMESPACE = 'capitalquery'
 
 export const StorageKeys = {
   users: `${NAMESPACE}.users`,

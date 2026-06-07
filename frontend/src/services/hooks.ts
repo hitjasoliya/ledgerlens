@@ -1,4 +1,4 @@
-import { useMemo, useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore, useState, useEffect } from 'react'
 import type { FileEntry, SafeUser } from '../types'
 import { bus, Topics } from '../lib/eventBus'
 import {
@@ -42,11 +42,35 @@ function useReactive<T>(topic: string, cacheKey: string, loader: () => T): T {
 }
 
 export function useUsers(): SafeUser[] {
-  return useReactive<SafeUser[]>(Topics.users, 'users:all', listUsers)
+  const [users, setUsers] = useState<SafeUser[]>([])
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const data = await listUsers()
+      if (active) setUsers(data)
+    }
+    load()
+    return bus.subscribe(Topics.users, load)
+  }, [])
+
+  return users
 }
 
 export function useEmployees(): SafeUser[] {
-  return useReactive<SafeUser[]>(Topics.users, 'users:employees', listEmployees)
+  const [employees, setEmployees] = useState<SafeUser[]>([])
+
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const data = await listEmployees()
+      if (active) setEmployees(data)
+    }
+    load()
+    return bus.subscribe(Topics.users, load)
+  }, [])
+
+  return employees
 }
 
 export function useAllFiles(): FileEntry[] {

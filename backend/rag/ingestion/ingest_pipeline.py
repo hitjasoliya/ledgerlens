@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 from typing import Dict, List
-
 from rich.console import Console
 from rich.progress import (
     BarColumn,
@@ -14,6 +13,10 @@ from rich.progress import (
 )
 
 from rag.ingestion.parser import PDFParser
+from rag.ingestion.page_renderer import PageRenderer
+from rag.ingestion.layout_detector import LayoutDetector
+from rag.ingestion.table_recognizer import TableRecognizer
+from rag.ingestion.region_extractor import RegionExtractor
 from rag.ingestion.chunker import Chunker
 from rag.intelligence.embedder import Embedder
 from rag.storage.es_client import ESClient
@@ -23,10 +26,24 @@ console = Console()
 
 class IngestPipeline:
     def __init__(self) -> None:
-        self.parser = PDFParser()
+        self.renderer = PageRenderer()
         self.chunker = Chunker()
         self.embedder = Embedder()
         self.es_client = ESClient()
+        
+        # Try to initialize visual layout modules, fallback to parser if fails
+        self.detector = None
+        self.table_recognizer = None
+        self.parser = None
+        
+        try:
+            self.detector = LayoutDetector()
+            self.table_recognizer = TableRecognizer()
+            console.print("[IngestPipeline] Visual layout models initialized successfully.")
+        except Exception as e:
+            console.print(f"[IngestPipeline] WARNING: Failed to initialize visual models: {e}. "
+                          "Falling back to legacy PDFParser.")
+            self.parser = PDFParser()
 
     def run(
         self, 
@@ -40,25 +57,74 @@ class IngestPipeline:
             allowed_users = []
             
         source_filename = os.path.basename(pdf_path)
-
-        console.rule(f"[bold blue]Ingesting: {source_filename}")
-
-        console.print("\n[bold]Step 1/3:[/bold] Parsing PDF...")
-        pages = self.parser.parse(pdf_path)
-        console.print(f"  ✓ {len(pages)} page(s) extracted\n")
-
-        console.print("[bold]Step 2/3:[/bold] Chunking text...")
-        chunks = self.chunker.chunk(pages, source_filename=source_filename)
-        console.print(f"  ✓ {len(chunks)} chunk(s) created\n")
+        console.rule(f"[bold blue]Ingesting (Layout): {source_filename}")
+        
+        pages_failed = 0
+        chunks = []
+        pages_count = 0
+        
+        # Check if we can use the visual model
+        if self.detector is not None and self.table_recognizer is not None:
+            console.print("\n[bold]Step 1/3:[/bold] Rendering pages and detecting regions...")
+            try:
+                pages = self.renderer.render(pdf_path)
+                pages_count = len(pages)
+                console.print(f"  ✓ {pages_count} page(s) rendered\n")
+            except Exception as e:
+                console.print(f"  ❌ Page rendering failed: {e}. Falling back to legacy PDFParser.")
+                return self._run_legacy(
+                    pdf_path, owner_id, session_id, is_persistent, allowed_users, source_filename
+                )
+            
+            all_regions = []
+            # Open region extractor for mapping text and images
+            try:
+                with RegionExtractor(self.table_recognizer, pdf_path) as extractor:
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn("[progress.description]{task.description}"),
+                        BarColumn(),
+                        MofNCompleteColumn(),
+                        TimeElapsedColumn(),
+                        console=console,
+                    ) as progress:
+                        task = progress.add_task("Processing pages", total=len(pages))
+                        for page in pages:
+                            try:
+                                regions = self.detector.detect(page["image"], page["page"])
+                                for r_idx, region in enumerate(regions):
+                                    extracted = extractor.extract(region, page, r_idx)
+                                    all_regions.append(extracted)
+                            except Exception as pe:
+                                console.print(f"  ⚠️ Error processing page {page['page']}: {pe}")
+                                pages_failed += 1
+                            progress.update(task, advance=1)
+            except Exception as e:
+                console.print(f"  ❌ Region extraction failed: {e}. Falling back to legacy PDFParser.")
+                return self._run_legacy(
+                    pdf_path, owner_id, session_id, is_persistent, allowed_users, source_filename
+                )
+                
+            console.print(f"  ✓ Extracted {len(all_regions)} region(s) total\n")
+            
+            console.print("[bold]Step 2/3:[/bold] Chunking regions...")
+            chunks = self.chunker.chunk(all_regions, source_filename=source_filename)
+            console.print(f"  ✓ {len(chunks)} chunk(s) created\n")
+        else:
+            # Fall back to legacy text parser
+            return self._run_legacy(
+                pdf_path, owner_id, session_id, is_persistent, allowed_users, source_filename
+            )
 
         if not chunks:
             console.print("[yellow]WARNING: No chunks created. "
                           "The PDF may be empty or image-only.[/yellow]")
             return {
                 "source": source_filename,
-                "pages_parsed": len(pages),
+                "pages_parsed": pages_count - pages_failed,
                 "chunks_created": 0,
                 "chunks_indexed": 0,
+                "pages_failed": pages_failed,
             }
 
         console.print("[bold]Step 3/3:[/bold] Generating embeddings...")
@@ -85,7 +151,120 @@ class IngestPipeline:
 
         for chunk, embedding in zip(chunks, all_embeddings):
             chunk["embedding"] = embedding
-            # Add ACL and session metadata
+            chunk["metadata"]["owner_id"] = owner_id
+            chunk["metadata"]["session_id"] = session_id
+            chunk["metadata"]["is_persistent"] = is_persistent
+            chunk["metadata"]["allowed_users"] = allowed_users
+
+        console.print(f"  ✓ {len(all_embeddings)} embedding(s) generated\n")
+
+        console.print("  Indexing in Elasticsearch...")
+        self.es_client.create_index_if_not_exists()
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Indexing chunks", total=len(chunks))
+
+            indexed_count = 0
+            upsert_batch_size = 200
+
+            for start in range(0, len(chunks), upsert_batch_size):
+                batch = chunks[start : start + upsert_batch_size]
+                count = self.es_client.upsert_chunks(batch)
+                indexed_count += count
+                progress.update(task, advance=len(batch))
+
+        console.print(f"  ✓ {indexed_count} chunk(s) indexed\n")
+
+        summary = {
+            "source": source_filename,
+            "pages_parsed": pages_count - pages_failed,
+            "chunks_created": len(chunks),
+            "chunks_indexed": indexed_count,
+            "pages_failed": pages_failed,
+        }
+
+        console.rule("[bold green]Ingestion Complete")
+        console.print(f"  Source:   {summary['source']}")
+        console.print(f"  Pages:    {summary['pages_parsed']}")
+        console.print(f"  Chunks:   {summary['chunks_created']}")
+        console.print(f"  Indexed:  {summary['chunks_indexed']}")
+        console.print(f"  Failed Pages: {summary['pages_failed']}")
+        console.print()
+
+        return summary
+
+    def _run_legacy(
+        self,
+        pdf_path: str,
+        owner_id: str,
+        session_id: str,
+        is_persistent: bool,
+        allowed_users: List[str],
+        source_filename: str
+    ) -> Dict:
+        if self.parser is None:
+            self.parser = PDFParser()
+            
+        console.print("\n[bold]Step 1/3 (Legacy):[/bold] Parsing PDF text...")
+        pages = self.parser.parse(pdf_path)
+        console.print(f"  ✓ {len(pages)} page(s) extracted\n")
+
+        console.print("[bold]Step 2/3 (Legacy):[/bold] Chunking text...")
+        legacy_regions = []
+        for page_data in pages:
+            legacy_regions.append({
+                "text": page_data["text"],
+                "metadata": {
+                    "page": page_data["page"],
+                    "chunk_type": "body",
+                    "image_path": None
+                }
+            })
+        chunks = self.chunker.chunk(legacy_regions, source_filename=source_filename)
+        console.print(f"  ✓ {len(chunks)} chunk(s) created\n")
+
+        if not chunks:
+            console.print("[yellow]WARNING: No chunks created. "
+                          "The PDF may be empty or image-only.[/yellow]")
+            return {
+                "source": source_filename,
+                "pages_parsed": len(pages),
+                "chunks_created": 0,
+                "chunks_indexed": 0,
+                "pages_failed": 0,
+            }
+
+        console.print("[bold]Step 3/3 (Legacy):[/bold] Generating embeddings...")
+        texts = [chunk["text"] for chunk in chunks]
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Embedding chunks", total=len(texts))
+
+            all_embeddings: List[List[float]] = []
+            batch_size = self.embedder.BATCH_SIZE
+
+            for start in range(0, len(texts), batch_size):
+                batch = texts[start : start + batch_size]
+                batch_embeddings = self.embedder.embed_batch(batch)
+                all_embeddings.extend(batch_embeddings)
+                progress.update(task, advance=len(batch))
+
+        for chunk, embedding in zip(chunks, all_embeddings):
+            chunk["embedding"] = embedding
             chunk["metadata"]["owner_id"] = owner_id
             chunk["metadata"]["session_id"] = session_id
             chunk["metadata"]["is_persistent"] = is_persistent
@@ -122,9 +301,10 @@ class IngestPipeline:
             "pages_parsed": len(pages),
             "chunks_created": len(chunks),
             "chunks_indexed": indexed_count,
+            "pages_failed": 0,
         }
 
-        console.rule("[bold green]Ingestion Complete")
+        console.rule("[bold green]Legacy Ingestion Complete")
         console.print(f"  Source:   {summary['source']}")
         console.print(f"  Pages:    {summary['pages_parsed']}")
         console.print(f"  Chunks:   {summary['chunks_created']}")

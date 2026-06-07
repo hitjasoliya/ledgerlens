@@ -1,0 +1,206 @@
+.layout-inspector {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--color-bg);
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.layout-inspector__container {
+  max-width: 896px;
+  margin: 0 auto;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.layout-inspector__header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.layout-inspector__header p {
+  color: var(--color-text-subtle);
+  margin-top: 4px;
+  font-size: 0.875rem;
+}
+
+.layout-inspector__upload-card {
+  background-color: var(--color-bg-elevated);
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+
+.layout-inspector__upload-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 128px;
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background-color: var(--color-bg-subtle);
+  transition: background-color 0.2s;
+}
+
+.layout-inspector__upload-area:hover {
+  background-color: var(--color-bg-elevated);
+}
+
+.layout-inspector__upload-area[disabled] {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.layout-inspector__upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px 0 24px;
+}
+
+.layout-inspector__upload-icon {
+  margin-bottom: 12px;
+  color: var(--color-text-muted);
+}
+
+.layout-inspector__upload-text {
+  margin-bottom: 8px;
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+}
+
+.layout-inspector__upload-text span {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.layout-inspector__upload-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-subtle);
+}
+
+.layout-inspector__hidden-input {
+  display: none;
+}
+
+.layout-inspector__error {
+  padding: 16px;
+  background-color: rgba(226, 88, 77, 0.1);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+}
+
+.layout-inspector__loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  gap: 12px;
+}
+
+.layout-inspector__spinner {
+  animation: spin 1s linear infinite;
+  border-radius: 50%;
+  height: 32px;
+  width: 32px;
+  border-bottom: 2px solid var(--color-coral);
+  border-top: 2px solid transparent;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+}
+
+.layout-inspector__loading-text {
+  color: var(--color-text-subtle);
+}
+
+.layout-inspector__results {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding-bottom: 32px;
+}
+
+.layout-inspector__page {
+  background-color: var(--color-bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.layout-inspector__page-header {
+  padding: 16px;
+  border-bottom: 1px solid var(--color-border);
+  font-weight: 500;
+  color: var(--color-text);
+  display: flex;
+  justify-content: space-between;
+}
+
+.layout-inspector__page-meta {
+  font-size: 0.875rem;
+  color: var(--color-text-subtle);
+}
+
+.layout-inspector__page-content {
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+  background-color: var(--color-bg-subtle);
+}
+
+.layout-inspector__canvas {
+  position: relative;
+  box-shadow: var(--shadow-md);
+  background-color: white;
+  display: inline-block;
+  width: 100%;
+}
+
+.layout-inspector__image {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+}
+
+.layout-inspector__region {
+  position: absolute;
+  transition: z-index 0.2s;
+}
+
+.layout-inspector__region:hover {
+  z-index: 10;
+}
+
+.layout-inspector__region-tooltip {
+  position: absolute;
+  top: -28px;
+  left: 0;
+  background-color: var(--color-text);
+  color: var(--color-bg);
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+  z-index: 20;
+  pointer-events: none;
+  box-shadow: var(--shadow-sm);
+}
+
+.layout-inspector__region:hover .layout-inspector__region-tooltip {
+  opacity: 1;
+}

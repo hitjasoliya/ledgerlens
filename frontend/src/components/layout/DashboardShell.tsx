@@ -5,7 +5,7 @@ import type { SafeUser } from '../../types'
 import { Logo } from '../ui/Logo'
 import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
-import { LogoutIcon, MenuIcon, CloseIcon } from '../ui/Icon'
+import { LogoutIcon, MenuIcon, CloseIcon, SunIcon, MoonIcon } from '../ui/Icon'
 import { useAuth } from '../../auth/useAuth'
 import './DashboardShell.css'
 
@@ -27,6 +27,53 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
   const navigate = useNavigate()
   const [activeId, setActiveId] = useState(defaultTab ?? tabs[0]?.id)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sidebar_collapsed')
+      return saved === 'true'
+    } catch {
+      return false
+    }
+  })
+  
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('theme') as 'light' | 'dark'
+      if (saved) {
+        document.documentElement.setAttribute('data-theme', saved)
+        return saved
+      }
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+      const defaultTheme = prefersDark ? 'dark' : 'light'
+      document.documentElement.setAttribute('data-theme', defaultTheme)
+      return defaultTheme
+    } catch {
+      return 'light'
+    }
+  })
+
+  const toggleTheme = () => {
+    setTheme(prev => {
+      const next = prev === 'light' ? 'dark' : 'light'
+      document.documentElement.setAttribute('data-theme', next)
+      try {
+        localStorage.setItem('theme', next)
+      } catch {}
+      return next
+    })
+  }
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev
+      try {
+        localStorage.setItem('sidebar_collapsed', String(next))
+      } catch (e) {
+        console.error(e)
+      }
+      return next
+    })
+  }
 
   const active = useMemo(() => {
     const match = tabs.find((t) => t.id === activeId)
@@ -40,7 +87,7 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
 
   return (
     <div className="dash">
-      <aside className={`dash__nav ${mobileNavOpen ? 'is-open' : ''} dark-scroll`}>
+      <aside className={`dash__nav ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileNavOpen ? 'is-open' : ''} dark-scroll`}>
         <div className="dash__nav-top">
           <Logo size="sm" variant="dark" />
           <button
@@ -101,16 +148,33 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
           <button
             type="button"
             className="dash__menu-btn"
-            onClick={() => setMobileNavOpen(true)}
-            aria-label="Open menu"
+            onClick={() => {
+              if (window.innerWidth <= 760) {
+                setMobileNavOpen(true)
+              } else {
+                toggleSidebar()
+              }
+            }}
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <MenuIcon size={18} />
           </button>
           <div className="dash__breadcrumb">
-            <span className="dash__breadcrumb-app">adani_rag</span>
+            <span className="dash__breadcrumb-app">CapitalQuery</span>
             <span className="dash__breadcrumb-sep">/</span>
             <span className="dash__breadcrumb-tab">{active?.label}</span>
           </div>
+          <button
+            type="button"
+            className="dash__theme-btn"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            title="Toggle theme"
+            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', color: 'var(--color-text-muted)' }}
+          >
+            {theme === 'light' ? <MoonIcon size={18} /> : <SunIcon size={18} />}
+          </button>
         </header>
 
         <div className="dash__content">{active?.content}</div>
