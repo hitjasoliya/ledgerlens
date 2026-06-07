@@ -91,7 +91,7 @@ class IngestPipeline:
                         task = progress.add_task("Processing pages", total=len(pages))
                         for page in pages:
                             try:
-                                regions = self.detector.detect(page["image"], page["page"])
+                                regions = self.detector.detect(page["image"], page["page"], pdf_path=pdf_path)
                                 for r_idx, region in enumerate(regions):
                                     extracted = extractor.extract(region, page, r_idx)
                                     all_regions.append(extracted)
