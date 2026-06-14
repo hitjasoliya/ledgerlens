@@ -9,9 +9,26 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 
-JWT_SECRET = os.getenv("JWT_SECRET", "super_secret_jwt_key_change_me_in_production")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+JWT_SECRET: str = os.getenv("JWT_SECRET", "")
+JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+
+def _get_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET", "")
+    if not secret:
+        # dotenv may not have loaded yet at import time; try loading it
+        from dotenv import load_dotenv
+        from pathlib import Path
+        env_path = Path(__file__).resolve().parent.parent / ".env"
+        load_dotenv(dotenv_path=env_path)
+        secret = os.getenv("JWT_SECRET", "")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET environment variable is required. "
+            "Set it in backend/.env before starting the server."
+        )
+    return secret
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
@@ -35,7 +52,8 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
     else:
         expire = datetime.datetime.utcnow() + datetime.timedelta(minutes=JWT_ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    secret = _get_jwt_secret()
+    encoded_jwt = jwt.encode(to_encode, secret, algorithm=JWT_ALGORITHM)
     return encoded_jwt
 
 
@@ -49,7 +67,8 @@ def get_current_user(token: Optional[str] = Depends(oauth2_scheme), db: Session 
         raise credentials_exception
 
     try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        secret = _get_jwt_secret()
+        payload = jwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
             raise credentials_exception

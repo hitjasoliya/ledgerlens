@@ -2,28 +2,43 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  font-family: var(--font-mono);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
   flex-shrink: 0;
   user-select: none;
+  border: 1px solid var(--color-accent);
 }
 
-.avatar--sm { width: 28px; height: 28px; font-size: 11px; }
-.avatar--md { width: 36px; height: 36px; font-size: 13px; }
-.avatar--lg { width: 48px; height: 48px; font-size: 16px; }
+.avatar--sm { width: 28px; height: 28px; font-size: 10px; }
+.avatar--md { width: 36px; height: 36px; font-size: 12px; }
+.avatar--lg { width: 44px; height: 44px; font-size: 14px; }
+
+.avatar--accent {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
 
 .avatar--coral {
-  background: var(--color-coral);
-  color: #fff;
+  background: var(--color-accent);
+  color: var(--color-bg);
 }
 
 .avatar--dark {
-  background: #2a2a2a;
-  color: #ececec;
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
 }
 
 .avatar--soft {
-  background: var(--color-coral-soft);
-  color: var(--color-coral);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
+}
+
+.avatar--neutral {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  border-color: var(--color-border);
 }

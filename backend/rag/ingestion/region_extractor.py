@@ -1,7 +1,10 @@
+import logging
 from pathlib import Path
 from typing import Dict, Any
 import pdfplumber
 from rag.ingestion.table_recognizer import TableRecognizer
+
+logger = logging.getLogger(__name__)
 
 
 class RegionExtractor:
@@ -49,7 +52,7 @@ class RegionExtractor:
                 cropped = pdf_page.crop(pdf_bbox)
                 chunk_text = cropped.extract_text() or ""
             except Exception as e:
-                print(f"[RegionExtractor] Text extraction failed: {e}")
+                logger.warning("Text extraction failed: %s", e)
                 chunk_text = ""
                 
             if r_type == "title":
@@ -75,7 +78,7 @@ class RegionExtractor:
                 cropped_img.save(figure_filepath, "PNG")
                 image_path = f"static/figures/{figure_filename}"
             except Exception as e:
-                print(f"[RegionExtractor] Figure cropping/saving failed: {e}")
+                logger.error("Figure cropping/saving failed: %s", e)
                 image_path = None
                 
             chunk_text = f"Figure on page {page_num}"

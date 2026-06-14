@@ -66,7 +66,7 @@ export function LayoutInspector() {
         </div>
 
         <div className="layout-inspector__upload-card">
-          <label className="layout-inspector__upload-area" disabled={loading}>
+          <label className={`layout-inspector__upload-area${loading ? ' is-disabled' : ''}`}>
             <div className="layout-inspector__upload-content">
               <UploadIcon size={24} className="layout-inspector__upload-icon" />
               <p className="layout-inspector__upload-text">

@@ -4,7 +4,6 @@ import { Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { Logo } from '../components/ui/Logo'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import { ShieldIcon, UserIcon, ChevronRightIcon } from '../components/ui/Icon'
 import type { Role } from '../types'
 import { useAuth } from '../auth/useAuth'
 import './Login.css'
@@ -24,8 +23,8 @@ export function Login() {
   const helperText = useMemo(
     () =>
       role === 'admin'
-        ? 'Admins manage users, files, and access permissions.'
-        : 'Employees query their permitted documents and can attach personal files.',
+        ? 'Admin — manage users, files, and access permissions.'
+        : 'Employee — query permitted documents and attach files.',
     [role],
   )
 
@@ -52,24 +51,16 @@ export function Login() {
     setError(null)
   }
 
-  const handleUsernameChange = (value: string) => {
-    setUsername(value)
-    if (error) setError(null)
-  }
-
-  const handlePasswordChange = (value: string) => {
-    setPassword(value)
-    if (error) setError(null)
-  }
-
   return (
     <div className="login">
+      <div className="login__scanline" aria-hidden />
+
       <button
         type="button"
         className="login__back"
         onClick={() => navigate('/')}
       >
-        ← Back to home
+        &larr; Back
       </button>
 
       <div className="login__card">
@@ -85,7 +76,7 @@ export function Login() {
             className={`login__role-btn ${role === 'admin' ? 'is-active' : ''}`}
             onClick={() => handleRoleChange('admin')}
           >
-            <ShieldIcon size={14} /> Admin
+            Admin
           </button>
           <button
             type="button"
@@ -94,12 +85,12 @@ export function Login() {
             className={`login__role-btn ${role === 'employee' ? 'is-active' : ''}`}
             onClick={() => handleRoleChange('employee')}
           >
-            <UserIcon size={14} /> Employee
+            Employee
           </button>
         </div>
 
         <header className="login__header">
-          <h1 className="login__title">Welcome back</h1>
+          <h1 className="login__title">Authenticate</h1>
           <p className="login__subtitle">{helperText}</p>
         </header>
 
@@ -108,8 +99,11 @@ export function Login() {
             label="Username"
             name="username"
             value={username}
-            onChange={(e) => handleUsernameChange(e.target.value)}
-            placeholder={role === 'admin' ? 'admin' : 'your.username'}
+            onChange={(e) => {
+              setUsername(e.target.value)
+              if (error) setError(null)
+            }}
+            placeholder={role === 'admin' ? 'admin' : 'username'}
             autoComplete="username"
             required
           />
@@ -118,8 +112,11 @@ export function Login() {
             name="password"
             type="password"
             value={password}
-            onChange={(e) => handlePasswordChange(e.target.value)}
-            placeholder="••••••••"
+            onChange={(e) => {
+              setPassword(e.target.value)
+              if (error) setError(null)
+            }}
+            placeholder="········"
             autoComplete="current-password"
             required
             error={error ?? undefined}
@@ -129,20 +126,20 @@ export function Login() {
             type="submit"
             fullWidth
             size="lg"
+            variant="primary"
             loading={submitting}
-            rightIcon={<ChevronRightIcon size={16} />}
           >
-            Continue as {role === 'admin' ? 'Admin' : 'Employee'}
+            Continue as {role}
           </Button>
         </form>
 
         {role === 'admin' ? (
           <p className="login__hint">
-            Default admin: <code>admin</code> / <code>admin123</code>
+            Default: <code>admin</code> / <code>admin123</code>
           </p>
         ) : (
           <p className="login__hint">
-            Don't have credentials? Ask your administrator to create an account.
+            Contact your administrator for credentials.
           </p>
         )}
       </div>

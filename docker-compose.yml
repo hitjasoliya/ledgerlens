@@ -6,6 +6,9 @@ services:
     container_name: rag_elasticsearch
     environment:
       - discovery.type=single-node
+      # For production: enable security and set passwords
+      # - xpack.security.enabled=true
+      # - xpack.security.authc.api_key.enabled=true
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:

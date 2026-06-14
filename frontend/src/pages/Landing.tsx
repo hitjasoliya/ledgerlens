@@ -1,7 +1,7 @@
 import { Navigate, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/ui/Logo'
 import { Button } from '../components/ui/Button'
-import { ShieldIcon, UserIcon, ChevronRightIcon, SparklesIcon, FileIcon, MessageIcon } from '../components/ui/Icon'
+import { ChevronRightIcon, FileIcon, MessageIcon, SparklesIcon } from '../components/ui/Icon'
 import { useAuth } from '../auth/useAuth'
 import './Landing.css'
 
@@ -15,34 +15,38 @@ export function Landing() {
 
   return (
     <div className="landing">
+      <div className="landing__scanline" aria-hidden />
+
       <header className="landing__header">
         <Logo size="md" />
-        <nav className="landing__nav">
+        <nav>
           <button
             type="button"
             className="landing__nav-link"
             onClick={() => navigate('/login?role=admin')}
           >
-            Login
+            login
           </button>
         </nav>
       </header>
 
       <main className="landing__main">
         <section className="landing__hero">
-          <div className="landing__badge">
-            <SparklesIcon size={14} />
-            <span>Enterprise RAG · CapitalQuery</span>
+          <div className="landing__prompt">
+            <span>&gt; CapitalQuery.init()</span>
+            <span className="landing__prompt-cursor" />
           </div>
+
           <h1 className="landing__title">
-            Your documents,
+            Query your documents.
             <br />
-            <span className="landing__title-accent">intelligently answered.</span>
+            <span className="landing__title-accent">Get cited answers.</span>
           </h1>
+
           <p className="landing__subtitle">
-            CapitalQuery transforms your enterprise documents into a conversational
-            knowledge base. Upload, control access, and ask anything — with
-            page-level citations grounded in your data.
+            Upload enterprise PDFs. Ask questions in natural language.
+            Get responses grounded in your data with page-level citations.
+            No hallucinations. Just facts.
           </p>
 
           <div className="landing__cta">
@@ -50,8 +54,7 @@ export function Landing() {
               size="lg"
               variant="primary"
               onClick={() => navigate('/login?role=admin')}
-              rightIcon={<ChevronRightIcon size={16} />}
-              leftIcon={<ShieldIcon size={16} />}
+              rightIcon={<ChevronRightIcon size={14} />}
             >
               Login as Admin
             </Button>
@@ -59,44 +62,41 @@ export function Landing() {
               size="lg"
               variant="secondary"
               onClick={() => navigate('/login?role=employee')}
-              rightIcon={<ChevronRightIcon size={16} />}
-              leftIcon={<UserIcon size={16} />}
+              rightIcon={<ChevronRightIcon size={14} />}
             >
               Login as Employee
             </Button>
           </div>
 
           <p className="landing__hint">
-            Default admin: <code>admin</code> / <code>admin123</code>
+            defaults: <code>admin</code> / <code>admin123</code>
           </p>
         </section>
 
         <section className="landing__features">
           <FeatureCard
-            icon={<FileIcon size={20} />}
-            title="Granular access control"
-            description="Admins curate the knowledge base and decide which employees can query each document."
+            icon={<FileIcon size={18} />}
+            title="Access Control"
+            description="Admins curate the knowledge base. Decide which employees can query each document."
           />
           <FeatureCard
-            icon={<MessageIcon size={20} />}
-            title="Cited conversations"
-            description="Every answer ships with page-level citations so trust is built into the response."
+            icon={<MessageIcon size={18} />}
+            title="Cited Answers"
+            description="Every response includes page-level citations grounded in your documents."
           />
           <FeatureCard
-            icon={<SparklesIcon size={20} />}
-            title="Personal context"
-            description="Employees can attach their own documents to a chat for ad-hoc analysis."
+            icon={<SparklesIcon size={18} />}
+            title="Ad-hoc Analysis"
+            description="Attach your own PDFs to any conversation for instant analysis."
           />
         </section>
       </main>
 
       <footer className="landing__footer">
-        <span>© {new Date().getFullYear()} CapitalQuery</span>
+        <span>&copy; {new Date().getFullYear()} CapitalQuery</span>
         <span className="landing__footer-dot">·</span>
-        <span>Built for enterprise knowledge teams</span>
+        <span>Enterprise RAG Platform</span>
       </footer>
-
-      <div className="landing__glow" aria-hidden />
     </div>
   )
 }

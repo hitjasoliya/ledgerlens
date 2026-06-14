@@ -5,7 +5,7 @@ import type { SafeUser } from '../../types'
 import { Logo } from '../ui/Logo'
 import { Avatar } from '../ui/Avatar'
 import { Badge } from '../ui/Badge'
-import { LogoutIcon, MenuIcon, CloseIcon, SunIcon, MoonIcon } from '../ui/Icon'
+import { LogoutIcon, MenuIcon, CloseIcon } from '../ui/Icon'
 import { useAuth } from '../../auth/useAuth'
 import './DashboardShell.css'
 
@@ -29,48 +29,16 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
-      const saved = localStorage.getItem('sidebar_collapsed')
-      return saved === 'true'
+      return localStorage.getItem('sidebar_collapsed') === 'true'
     } catch {
       return false
     }
   })
-  
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    try {
-      const saved = localStorage.getItem('theme') as 'light' | 'dark'
-      if (saved) {
-        document.documentElement.setAttribute('data-theme', saved)
-        return saved
-      }
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-      const defaultTheme = prefersDark ? 'dark' : 'light'
-      document.documentElement.setAttribute('data-theme', defaultTheme)
-      return defaultTheme
-    } catch {
-      return 'light'
-    }
-  })
-
-  const toggleTheme = () => {
-    setTheme(prev => {
-      const next = prev === 'light' ? 'dark' : 'light'
-      document.documentElement.setAttribute('data-theme', next)
-      try {
-        localStorage.setItem('theme', next)
-      } catch {}
-      return next
-    })
-  }
 
   const toggleSidebar = () => {
     setSidebarCollapsed((prev) => {
       const next = !prev
-      try {
-        localStorage.setItem('sidebar_collapsed', String(next))
-      } catch (e) {
-        console.error(e)
-      }
+      try { localStorage.setItem('sidebar_collapsed', String(next)) } catch {}
       return next
     })
   }
@@ -87,7 +55,7 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
 
   return (
     <div className="dash">
-      <aside className={`dash__nav ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileNavOpen ? 'is-open' : ''} dark-scroll`}>
+      <aside className={`dash__nav ${sidebarCollapsed ? 'is-collapsed' : ''} ${mobileNavOpen ? 'is-open' : ''}`}>
         <div className="dash__nav-top">
           <Logo size="sm" variant="dark" />
           <button
@@ -96,7 +64,7 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
             onClick={() => setMobileNavOpen(false)}
             aria-label="Close menu"
           >
-            <CloseIcon size={16} />
+            <CloseIcon size={14} />
           </button>
         </div>
 
@@ -122,11 +90,11 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
             <Avatar
               name={user.username}
               size="sm"
-              variant={user.role === 'admin' ? 'coral' : 'soft'}
+              variant={user.role === 'admin' ? 'accent' : 'neutral'}
             />
             <div className="dash__user-info">
               <span className="dash__user-name">{user.username}</span>
-              <Badge tone={user.role === 'admin' ? 'coral' : 'neutral'}>
+              <Badge tone={user.role === 'admin' ? 'accent' : 'neutral'} size="sm">
                 {user.role}
               </Badge>
             </div>
@@ -138,7 +106,7 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
             aria-label="Logout"
             title="Logout"
           >
-            <LogoutIcon size={16} />
+            <LogoutIcon size={14} />
           </button>
         </div>
       </aside>
@@ -155,26 +123,15 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
                 toggleSidebar()
               }
             }}
-            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={sidebarCollapsed ? "Show sidebar" : "Hide sidebar"}
           >
-            <MenuIcon size={18} />
+            <MenuIcon size={16} />
           </button>
           <div className="dash__breadcrumb">
             <span className="dash__breadcrumb-app">CapitalQuery</span>
             <span className="dash__breadcrumb-sep">/</span>
             <span className="dash__breadcrumb-tab">{active?.label}</span>
           </div>
-          <button
-            type="button"
-            className="dash__theme-btn"
-            onClick={toggleTheme}
-            aria-label="Toggle theme"
-            title="Toggle theme"
-            style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', color: 'var(--color-text-muted)' }}
-          >
-            {theme === 'light' ? <MoonIcon size={18} /> : <SunIcon size={18} />}
-          </button>
         </header>
 
         <div className="dash__content">{active?.content}</div>

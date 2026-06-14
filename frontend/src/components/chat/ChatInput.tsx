@@ -16,7 +16,7 @@ type Props = {
 export function ChatInput({
   onSend,
   disabled = false,
-  placeholder = 'Ask a question about your documents...',
+  placeholder = 'Ask about your documents...',
   allowFile = false,
   contextLabel,
   onClearContext,
@@ -62,7 +62,7 @@ export function ChatInput({
     <div className="chat-input-wrap">
       {contextLabel && (
         <div className="chat-input__context">
-          <span>Context:</span>
+          <span>context:</span>
           <strong>{contextLabel}</strong>
           {onClearContext && (
             <button
@@ -71,7 +71,7 @@ export function ChatInput({
               onClick={onClearContext}
               aria-label="Clear context"
             >
-              <CloseIcon size={12} />
+              <CloseIcon size={10} />
             </button>
           )}
         </div>
@@ -89,21 +89,24 @@ export function ChatInput({
               }}
               aria-label="Remove file"
             >
-              <CloseIcon size={12} />
+              <CloseIcon size={10} />
             </button>
           </div>
         )}
 
-        <textarea
-          ref={textareaRef}
-          className="chat-input__textarea"
-          rows={1}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-        />
+        <div className="chat-input__prompt-row">
+          <span className="chat-input__prompt-prefix">&gt;</span>
+          <textarea
+            ref={textareaRef}
+            className="chat-input__textarea"
+            rows={1}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+          />
+        </div>
 
         <div className="chat-input__actions">
           {allowFile && (
@@ -120,10 +123,10 @@ export function ChatInput({
                 className="chat-input__attach"
                 onClick={() => fileRef.current?.click()}
                 aria-label="Attach PDF"
-                title="Attach a PDF for this message"
+                title="Attach a PDF"
                 disabled={disabled}
               >
-                <PaperclipIcon size={16} />
+                <PaperclipIcon size={14} />
               </button>
             </>
           )}
@@ -134,13 +137,13 @@ export function ChatInput({
             disabled={disabled || !value.trim()}
             aria-label="Send"
           >
-            <SendIcon size={14} />
+            <SendIcon size={12} />
           </Button>
         </div>
       </div>
 
       <p className="chat-input__hint">
-        Press <kbd>Enter</kbd> to send · <kbd>Shift + Enter</kbd> for newline
+        <kbd>Enter</kbd> send · <kbd>Shift+Enter</kbd> newline
       </p>
     </div>
   )

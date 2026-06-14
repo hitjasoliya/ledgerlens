@@ -1,30 +1,40 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, Dict, List
 
 from elasticsearch import Elasticsearch, helpers
 
-from rag.utils.config import ES_HOST, ES_INDEX, EMBEDDING_DIMS
+from rag.utils.config import ES_HOST, ES_INDEX, EMBEDDING_DIMS, ES_USERNAME, ES_PASSWORD
+
+logger = logging.getLogger(__name__)
 
 _RRF_K: int = 60
 _CANDIDATE_MULT: int = 10
 
+_es_instance: Elasticsearch | None = None
+
+
+def _get_es_client() -> Elasticsearch:
+    global _es_instance
+    if _es_instance is None:
+        kwargs: dict[str, Any] = {"hosts": [ES_HOST]}
+        if ES_USERNAME and ES_PASSWORD:
+            kwargs["basic_auth"] = (ES_USERNAME, ES_PASSWORD)
+        _es_instance = Elasticsearch(**kwargs)
+        info = _es_instance.info()
+        logger.info("Connected to Elasticsearch %s", info["version"]["number"])
+    return _es_instance
+
 
 class ESClient:
     def __init__(self) -> None:
-        try:
-            self.es = Elasticsearch(hosts=[ES_HOST])
-            info = self.es.info()
-            print(f"[ES] Connected to Elasticsearch {info['version']['number']}")
-        except Exception as exc:
-            raise ConnectionError(
-                f"[ES] Failed to connect to Elasticsearch at {ES_HOST}: {exc}"
-            ) from exc
+        self.es = _get_es_client()
         self.index_name: str = ES_INDEX
 
     def create_index_if_not_exists(self) -> None:
         if self.es.indices.exists(index=self.index_name):
-            print(f"[ES] Index '{self.index_name}' already exists — skipping.")
+            logger.info(f"[ES] Index '{self.index_name}' already exists — skipping.")
             return
         body: Dict[str, Any] = {
             "mappings": {
@@ -56,7 +66,7 @@ class ESClient:
         }
         try:
             self.es.indices.create(index=self.index_name, body=body)
-            print(f"[ES] Index '{self.index_name}' created successfully.")
+            logger.info(f"[ES] Index '{self.index_name}' created successfully.")
         except Exception as exc:
             raise RuntimeError(
                 f"[ES] Failed to create index '{self.index_name}': {exc}"
@@ -80,10 +90,10 @@ class ESClient:
                 self.es, actions, raise_on_error=False
             )
             if errors:
-                print(f"[ES] Bulk upsert had {len(errors)} error(s).")
+                logger.info(f"[ES] Bulk upsert had {len(errors)} error(s).")
                 for err in errors[:3]:
-                    print(f"     → {err}")
-            print(f"[ES] Upserted {success_count} chunk(s).")
+                    logger.info(f"     → {err}")
+            logger.info(f"[ES] Upserted {success_count} chunk(s).")
             return success_count
         except Exception as exc:
             raise RuntimeError(f"[ES] Bulk upsert failed: {exc}") from exc
@@ -247,4 +257,4 @@ class ESClient:
 if __name__ == "__main__":
     client = ESClient()
     client.create_index_if_not_exists()
-    print("\n✅ Index ready — Layer 5 is operational.")
+    logger.info("\n✅ Index ready — Layer 5 is operational.")

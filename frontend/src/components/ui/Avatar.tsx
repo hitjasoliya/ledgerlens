@@ -4,10 +4,10 @@ import './Avatar.css'
 type Props = {
   name: string
   size?: 'sm' | 'md' | 'lg'
-  variant?: 'coral' | 'dark' | 'soft'
+  variant?: 'accent' | 'neutral'
 }
 
-export function Avatar({ name, size = 'md', variant = 'coral' }: Props) {
+export function Avatar({ name, size = 'md', variant = 'accent' }: Props) {
   return (
     <div className={`avatar avatar--${size} avatar--${variant}`} aria-label={name}>
       {initials(name)}

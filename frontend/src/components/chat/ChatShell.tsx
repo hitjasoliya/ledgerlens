@@ -23,6 +23,7 @@ type EphemeralFileMeta = {
 export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }: Props) {
   const chat = useChat({ ownerId: user.id })
   const [attaching, setAttaching] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const contextFile = useMemo<FileEntry | null>(() => {
     if (!chat.activeSession?.contextFileId) return null
@@ -82,25 +83,31 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
 
   return (
     <div className="chat-shell">
-      <ChatSidebar
-        sessions={chat.sessions}
-        activeId={chat.activeSession?.id ?? null}
-        onSelect={chat.selectSession}
-        onNew={chat.newSession}
-        onDelete={chat.removeSession}
-      />
+      <div className={`chat-shell__sidebar ${sidebarOpen ? 'is-open' : ''}`}>
+        <ChatSidebar
+          sessions={chat.sessions}
+          activeId={chat.activeSession?.id ?? null}
+          onSelect={(id) => { chat.selectSession(id); setSidebarOpen(false) }}
+          onNew={() => { chat.newSession(); setSidebarOpen(true) }}
+          onDelete={chat.removeSession}
+          onClose={() => setSidebarOpen(false)}
+        />
+      </div>
       <ChatWindow
         session={chat.activeSession}
         userName={user.username}
         loading={chat.loading || attaching}
         error={chat.error}
         onDismissError={chat.dismissError}
+        onRegenerate={chat.regenerate}
         onSend={handleSend}
         allowFile={allowFileAttach}
         contextFile={contextFile}
         contextFiles={accessibleFiles}
         onPickContext={(id) => chat.attachContextFile(id || undefined)}
         onClearContext={() => chat.attachContextFile(undefined)}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((o) => !o)}
       />
     </div>
   )

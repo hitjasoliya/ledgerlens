@@ -2,16 +2,18 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 10px;
-  border-radius: 999px;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: 0.01em;
-  border: 1px solid transparent;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--color-border);
   white-space: nowrap;
 }
 
-.badge--sm { font-size: 11px; padding: 2px 8px; }
-.badge--md { font-size: 12px; padding: 4px 10px; }
+.badge--sm { font-size: 10px; padding: 1px 6px; }
+.badge--md { font-size: 11px; padding: 3px 10px; }
 
 .badge--neutral {
   background: var(--color-bg-subtle);
@@ -20,25 +22,31 @@
 }
 
 .badge--coral {
-  background: var(--color-coral-soft);
-  color: var(--color-coral);
-  border-color: var(--color-coral-border);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: rgba(0, 200, 150, 0.25);
+}
+
+.badge--accent {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: rgba(0, 200, 150, 0.25);
 }
 
 .badge--success {
-  background: rgba(47, 158, 110, 0.1);
-  color: var(--color-success);
-  border-color: rgba(47, 158, 110, 0.3);
+  background: rgba(0, 200, 150, 0.06);
+  color: var(--color-accent);
+  border-color: rgba(0, 200, 150, 0.2);
 }
 
 .badge--danger {
-  background: rgba(192, 71, 62, 0.08);
+  background: var(--color-danger-soft);
   color: var(--color-danger);
-  border-color: rgba(192, 71, 62, 0.3);
+  border-color: rgba(224, 85, 74, 0.3);
 }
 
 .badge--dark {
-  background: #2a2a2a;
-  color: #ececec;
-  border-color: #2a2a2a;
+  background: var(--color-sidebar-bg);
+  color: var(--color-sidebar-text);
+  border-color: var(--color-sidebar-border);
 }

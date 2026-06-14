@@ -73,7 +73,7 @@ export function FileTable({
                 ) : (
                   <div className="file-table__access-list">
                     {file.accessList.slice(0, 2).map((id) => (
-                      <Badge key={id} tone="coral">
+                      <Badge key={id} tone="accent">
                         {employeeMap.get(id) ?? id.slice(0, 6)}
                       </Badge>
                     ))}

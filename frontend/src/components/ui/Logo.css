@@ -2,18 +2,17 @@
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  font-family: var(--font-sans);
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-weight: 600;
   letter-spacing: -0.02em;
+  text-transform: uppercase;
 }
 
 .logo--light { color: var(--color-text); }
-.logo--light .logo__mark { color: var(--color-coral); }
-.logo--light .logo__accent { color: var(--color-coral); }
+.logo--light .logo__accent { color: var(--color-accent); }
 
 .logo--dark { color: var(--color-sidebar-text); }
-.logo--dark .logo__mark { color: var(--color-coral); }
-.logo--dark .logo__accent { color: var(--color-coral); }
+.logo--dark .logo__accent { color: var(--color-accent); }
 
 .logo__mark {
   display: inline-flex;
@@ -25,9 +24,9 @@
 .logo--md .logo__mark { width: 28px; height: 28px; }
 .logo--lg .logo__mark { width: 40px; height: 40px; }
 
-.logo--sm .logo__wordmark { font-size: 15px; }
-.logo--md .logo__wordmark { font-size: 17px; }
-.logo--lg .logo__wordmark { font-size: 24px; }
+.logo--sm .logo__wordmark { font-size: 14px; }
+.logo--md .logo__wordmark { font-size: 16px; }
+.logo--lg .logo__wordmark { font-size: 22px; }
 
 .logo__mark svg {
   width: 100%;
@@ -42,4 +41,5 @@
 
 .logo__accent {
   font-weight: 700;
+  color: var(--color-accent);
 }

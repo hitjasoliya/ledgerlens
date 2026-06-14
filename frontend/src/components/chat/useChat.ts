@@ -8,6 +8,15 @@ import {
   listSessions,
   setContextFile,
 } from '../../services/chatService'
+import { readJSON, StorageKeys, writeJSON } from '../../lib/storage'
+
+function readAll(ownerId: string) {
+  return readJSON<ChatSession[]>(StorageKeys.chats(ownerId), [])
+}
+
+function writeAll(ownerId: string, sessions: ChatSession[]) {
+  writeJSON(StorageKeys.chats(ownerId), sessions)
+}
 import { sendMessage } from '../../lib/api'
 import { bus, Topics } from '../../lib/eventBus'
 
@@ -25,6 +34,7 @@ export type UseChatResult = {
   newSession: () => ChatSession
   removeSession: (id: string) => void
   send: (text: string, attachedFile?: FileEntry) => Promise<void>
+  regenerate: () => Promise<void>
   attachContextFile: (fileId: string | undefined) => void
 }
 
@@ -156,6 +166,53 @@ export function useChat({ ownerId }: UseChatOptions): UseChatResult {
     [ownerId, activeId],
   )
 
+  const regenerate = useCallback(async () => {
+    if (!activeId) return
+    const session = getSession(ownerId, activeId)
+    if (!session || session.messages.length === 0) return
+
+    // Find last user message
+    const lastUserIdx = [...session.messages].reverse().findIndex(m => m.role === 'user')
+    if (lastUserIdx === -1) return
+
+    const actualIdx = session.messages.length - 1 - lastUserIdx
+    const lastUserMsg = session.messages[actualIdx]
+
+    // Remove all messages after the last user message
+    const sessions = readAll(ownerId)
+    const si = sessions.findIndex(s => s.id === activeId)
+    if (si !== -1) {
+      sessions[si] = {
+        ...session,
+        messages: session.messages.slice(0, actualIdx + 1),
+        updatedAt: Date.now(),
+      }
+      writeAll(ownerId, sessions)
+    }
+
+    // Re-send
+    setError(null)
+    setLoading(true)
+    try {
+      const res = await sendMessage(lastUserMsg.content, ownerId, session.id)
+      appendMessage(ownerId, activeId, {
+        role: 'assistant',
+        content: res.answer,
+        citations: res.citations,
+        chunksUsed: res.chunks_used,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      setError(message)
+      appendMessage(ownerId, activeId, {
+        role: 'assistant',
+        content: `Error: ${message}`,
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [ownerId, activeId])
+
   return {
     sessions,
     activeSession,
@@ -166,6 +223,7 @@ export function useChat({ ownerId }: UseChatOptions): UseChatResult {
     newSession,
     removeSession,
     send,
+    regenerate,
     attachContextFile,
   }
 }

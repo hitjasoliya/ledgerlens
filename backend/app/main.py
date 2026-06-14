@@ -6,13 +6,15 @@ from pathlib import Path
 if __package__ is None:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import hashlib
+import logging
 import os
 import tempfile
 from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, get_db, SessionLocal
@@ -30,10 +32,15 @@ from app.schemas import (
     UserResponse,
     UserCreateRequest,
 )
-from rag.ingestion.ingest_pipeline import IngestPipeline
-from rag.ingestion.page_renderer import PageRenderer
-from rag.ingestion.layout_detector import LayoutDetector
+from rag.ingestion.docling_pipeline import DoclingPipeline
 from rag.orchestrator.engine import RAGEngine
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
 
 _engine: Optional[RAGEngine] = None
 
@@ -58,9 +65,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-cache_dir = Path(__file__).resolve().parent.parent / "data" / "cache"
-cache_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/cache", StaticFiles(directory=str(cache_dir)), name="cache")
+CACHE_DIR: Path = Path(__file__).resolve().parent.parent / "data" / "cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.get("/api/cache/{filename:path}")
+def get_cache_file(
+    filename: str,
+    current_user: DBUser = Depends(get_current_user),
+) -> FileResponse:
+    file_path = CACHE_DIR / filename
+    safe_path = file_path.resolve()
+    if not str(safe_path).startswith(str(CACHE_DIR.resolve())):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not safe_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(safe_path))
+
 
 @app.on_event("startup")
 def on_startup():
@@ -75,10 +96,9 @@ def on_startup():
             )
             db.add(admin_user)
             db.commit()
-            print("[Startup] Seeded default admin user 'admin' / 'admin123'")
+            logger.info("Seeded default admin user 'admin'")
     finally:
         db.close()
-
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -91,13 +111,13 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     user = db.query(DBUser).filter(DBUser.username == body.username).first()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid username or password")
-    
+
     if user.role != body.role:
         raise HTTPException(status_code=401, detail=f"User is not registered as {body.role}")
-        
+
     access_token = create_access_token(data={"sub": user.username})
     created_at_ts = int(user.created_at.timestamp() * 1000)
-    
+
     user_res = UserResponse(
         id=user.id,
         username=user.username,
@@ -146,7 +166,7 @@ def create_user(
     existing = db.query(DBUser).filter(DBUser.username == body.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="Username already exists")
-        
+
     new_user = DBUser(
         username=body.username,
         hashed_password=get_password_hash(body.password),
@@ -156,7 +176,7 @@ def create_user(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    
+
     return UserResponse(
         id=new_user.id,
         username=new_user.username,
@@ -173,11 +193,11 @@ def delete_user(
 ) -> ClearChatResponse:
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
-        
+
     user = db.query(DBUser).filter(DBUser.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-        
+
     db.delete(user)
     db.commit()
     return ClearChatResponse(ok=True)
@@ -190,8 +210,8 @@ def chat(
 ) -> ChatResponse:
     engine = get_engine()
     result = engine.chat(
-        body.message, 
-        current_user_id=current_user.id, 
+        body.message,
+        current_user_id=current_user.id,
         current_session_id=body.session_id
     )
     cites_raw = result.get("citations") or []
@@ -207,10 +227,16 @@ def chat(
 
 
 @app.post("/api/chat/clear", response_model=ClearChatResponse)
-def clear_chat(current_user: DBUser = Depends(get_current_user)) -> ClearChatResponse:
+def clear_chat(
+    session_id: str = Form("default_session"),
+    current_user: DBUser = Depends(get_current_user)
+) -> ClearChatResponse:
     engine = get_engine()
-    engine.clear_history()
+    engine.clear_history(session_id)
     return ClearChatResponse(ok=True)
+
+
+MAX_UPLOAD_SIZE: int = 50 * 1024 * 1024  # 50 MB
 
 
 @app.post("/api/ingest", response_model=IngestResponse)
@@ -225,14 +251,17 @@ async def ingest(
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Expected a PDF file")
 
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Max size is {MAX_UPLOAD_SIZE // (1024*1024)}MB")
+
     tmp_path: Optional[str] = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
             tmp_path = tmp.name
-            content = await file.read()
             tmp.write(content)
 
-        pipeline = IngestPipeline()
+        pipeline = DoclingPipeline()
         allowed_users_list = [u.strip() for u in allowed_users.split(",") if u.strip()]
         summary = pipeline.run(
             tmp_path,
@@ -264,8 +293,8 @@ def end_session(
 ) -> ClearChatResponse:
     engine = get_engine()
     deleted = engine.es_client.delete_session_chunks(session_id)
-    print(f"Session {session_id} ended. Deleted {deleted} non-persistent chunks.")
-    engine.clear_history()
+    logger.info("Session %s ended. Deleted %d non-persistent chunks.", session_id, deleted)
+    engine.clear_history(session_id)
     return ClearChatResponse(ok=True)
 
 
@@ -283,30 +312,78 @@ async def layout_preview(
             tmp_path = tmp.name
             content = await file.read()
             tmp.write(content)
-            
-        renderer = PageRenderer()
-        detector = LayoutDetector()
-        
-        pages = renderer.render(tmp_path)
-        file_hash = renderer._compute_file_hash(tmp_path)
-        
+
+        import fitz
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+
+        # Render pages with PyMuPDF
+        pdf_doc = fitz.open(tmp_path)
+        dpi = 200
+        scale = dpi / 72
+        raw_bytes = open(tmp_path, "rb").read()
+        file_hash = hashlib.md5(raw_bytes).hexdigest()
+
         response_pages = []
-        for p in pages:
-            regions = detector.detect(p["image"], p["page"])
-            image_url = f"/cache/{file_hash}_p{p['page']}_dpi{renderer.dpi}.png"
+        for page_idx in range(len(pdf_doc)):
+            page = pdf_doc[page_idx]
+            pix = page.get_pixmap(dpi=dpi)
+            cache_path = CACHE_DIR / f"{file_hash}_p{page_idx + 1}_dpi{dpi}.png"
+            cache_path.write_bytes(pix.tobytes("png"))
             response_pages.append({
-                "page_num": p["page"],
-                "image_url": image_url,
-                "width": p["width"],
-                "height": p["height"],
-                "regions": regions
+                "page_num": page_idx + 1,
+                "image_url": f"/api/cache/{file_hash}_p{page_idx + 1}_dpi{dpi}.png",
+                "width": int(page.rect.width),
+                "height": int(page.rect.height),
+                "regions": [],
             })
-            
+        pdf_doc.close()
+
+        # Detect layout regions with Docling
+        try:
+            pipeline_options = PdfPipelineOptions()
+            pipeline_options.do_ocr = False
+            pipeline_options.do_table_structure = True
+            converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
+                }
+            )
+            result = converter.convert(tmp_path)
+            doc = result.document
+
+            for item, _ in doc.iterate_items():
+                if not item.prov:
+                    continue
+                prov = item.prov[0]
+                page_no = prov.page_no
+                bbox = prov.bbox
+                if not bbox:
+                    continue
+                # Docling bbox: (l, b, r, t) with bottom-left origin
+                region = {
+                    "type": item.label,
+                    "bbox": [
+                        int(bbox.l * scale),
+                        int((page.rect.height - bbox.t) * scale),
+                        int(bbox.r * scale),
+                        int((page.rect.height - bbox.b) * scale),
+                    ],
+                    "score": 0.95,
+                    "page": page_no,
+                }
+                for rp in response_pages:
+                    if rp["page_num"] == page_no:
+                        rp["regions"].append(region)
+                        break
+        except Exception as e:
+            logger.warning("Docling layout detection failed: %s", e)
+
         return {"pages": response_pages}
-        
+
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     finally:
         if tmp_path and os.path.isfile(tmp_path):
             os.unlink(tmp_path)
-

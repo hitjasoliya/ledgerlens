@@ -2,25 +2,28 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
-import google.generativeai as genai
-
 from rag.utils.config import GEMINI_API_KEY, GENERATION_MODEL, SYSTEM_PROMPT
+from rag.utils.timeout import TimeoutError as ThreadTimeoutError
 
 
 class Generator:
+    GENERATE_TIMEOUT: int = 60  # seconds
+
     def __init__(self) -> None:
         if not GEMINI_API_KEY:
             raise ValueError(
                 "[Generator] GEMINI_API_KEY is not set. "
                 "Please add it to your .env file."
             )
+        import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
         self.model = genai.GenerativeModel(
             model_name=GENERATION_MODEL,
             system_instruction=SYSTEM_PROMPT,
             generation_config=genai.GenerationConfig(
-                temperature=0.1,
-                max_output_tokens=1024,
+                temperature=0.15,
+                max_output_tokens=2048,
+                top_p=0.95,
             ),
         )
         self.greeting_model = genai.GenerativeModel(
@@ -37,6 +40,16 @@ class Generator:
                 max_output_tokens=150,
             ),
         )
+
+    def _send_with_timeout(self, chat_session, message: str) -> str:
+        from rag.utils.timeout import timeout_after
+
+        @timeout_after(self.GENERATE_TIMEOUT)
+        def _send() -> str:
+            response = chat_session.send_message(message)
+            return response.text.strip()
+
+        return _send()
 
     def _build_context_string(self, context_chunks: List[Dict[str, Any]]) -> str:
         parts: List[str] = []
@@ -67,8 +80,9 @@ class Generator:
 
         try:
             chat = self.model.start_chat(history=history)
-            response = chat.send_message(user_message)
-            return response.text.strip()
+            return self._send_with_timeout(chat, user_message)
+        except ThreadTimeoutError:
+            raise RuntimeError(f"Answer generation timed out after {self.GENERATE_TIMEOUT}s")
         except Exception as exc:
             raise RuntimeError(
                 f"[Generator] Failed to generate answer: {exc}"
@@ -87,8 +101,9 @@ class Generator:
 
         try:
             chat = self.greeting_model.start_chat(history=history)
-            response = chat.send_message(question)
-            return response.text.strip()
+            return self._send_with_timeout(chat, question)
+        except ThreadTimeoutError:
+            raise RuntimeError(f"Greeting generation timed out after {self.GENERATE_TIMEOUT}s")
         except Exception as exc:
             raise RuntimeError(
                 f"[Generator] Failed to generate greeting: {exc}"

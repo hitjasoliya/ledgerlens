@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Dict, List
 
 import pdfplumber
+
+logger = logging.getLogger(__name__)
 
 
 class PDFParser:
@@ -34,7 +37,7 @@ class PDFParser:
                 tables = page.extract_tables()
                 has_tables = tables is not None and len(tables) > 0
                 if has_tables:
-                    print(f"[Parser] Page {page_num}: table detected → merging table text")
+                    logger.debug("Page %d: table detected — merging table text", page_num)
                 raw = self._pdfplumber_page_content(page, merge_tables=has_tables)
                 pages_by_num[page_num] = raw
 
@@ -45,10 +48,7 @@ class PDFParser:
         pages.sort(key=lambda p: p["page"])
         pages = [p for p in pages if p["text"]]
 
-        print(
-            f"[Parser] Extracted {len(pages)} non-empty page(s) from "
-            f"'{os.path.basename(pdf_path)}'"
-        )
+        logger.info("Extracted %d non-empty page(s) from '%s'", len(pages), os.path.basename(pdf_path))
         return pages
 
 

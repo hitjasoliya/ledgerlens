@@ -60,7 +60,7 @@ export function UserManager({ currentUserId }: Props) {
               <div className="user-manager__member">
                 <Avatar
                   name={user.username}
-                  variant={user.role === 'admin' ? 'dark' : 'coral'}
+                  variant={user.role === 'admin' ? 'neutral' : 'accent'}
                 />
                 <div>
                   <div className="user-manager__name">
@@ -70,7 +70,7 @@ export function UserManager({ currentUserId }: Props) {
                 </div>
               </div>
               <div>
-                <Badge tone={user.role === 'admin' ? 'dark' : 'coral'}>
+                <Badge tone={user.role === 'admin' ? 'accent' : 'neutral'}>
                   {user.role}
                 </Badge>
               </div>

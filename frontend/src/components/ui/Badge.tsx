@@ -3,7 +3,7 @@ import './Badge.css'
 
 type Props = {
   children: ReactNode
-  tone?: 'neutral' | 'coral' | 'success' | 'danger' | 'dark'
+  tone?: 'neutral' | 'accent' | 'success' | 'danger' | 'dark'
   size?: 'sm' | 'md'
 }
 

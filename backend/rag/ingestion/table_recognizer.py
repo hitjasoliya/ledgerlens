@@ -1,8 +1,11 @@
+import logging
 from typing import List, Dict, Any, Optional
 import PIL.Image
 import torch
 from transformers import AutoImageProcessor, TableTransformerForObjectDetection
 from rag.utils.config import TABLE_MODEL, TABLE_DEVICE
+
+logger = logging.getLogger(__name__)
 
 
 class TableRecognizer:
@@ -89,7 +92,7 @@ class TableRecognizer:
                 return markdown_table
 
         except Exception as e:
-            print(f"[TableRecognizer] TATR failed: {e}. Falling back to pdfplumber.")
+            logger.warning("TATR failed: %s. Falling back to pdfplumber.", e)
 
         # Fallback to pdfplumber
         if pdf_page is not None:
@@ -134,7 +137,7 @@ class TableRecognizer:
             if tables:
                 return self._format_table_to_markdown(tables[0])
         except Exception as e:
-            print(f"[TableRecognizer] pdfplumber extraction failed: {e}")
+            logger.error("pdfplumber extraction failed: %s", e)
         return ""
 
     def _format_table_to_markdown(self, grid: List[List[Optional[str]]]) -> str:

@@ -10,6 +10,8 @@ GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
 ES_HOST: str = os.getenv("ES_HOST", "http://localhost:9200")
 ES_INDEX: str = os.getenv("ES_INDEX", "rag_chunks")
+ES_USERNAME: str = os.getenv("ES_USERNAME", "")
+ES_PASSWORD: str = os.getenv("ES_PASSWORD", "")
 
 CHUNK_SIZE: int = int(os.getenv("CHUNK_SIZE", "500"))
 CHUNK_OVERLAP: int = int(os.getenv("CHUNK_OVERLAP", "50"))
@@ -31,12 +33,19 @@ FIGURE_CAPTION_MAX_CHARS: int = int(os.getenv("FIGURE_CAPTION_MAX_CHARS", "400")
 
 
 SYSTEM_PROMPT: str = (
-    "You are a strict, precise financial document analyst. You ONLY answer using the context "
-    "provided below. Each context chunk has a page number and chunk ID in its header. "
-    "Always end your answer by listing the pages you used in this format: [Sources: p3, p7]. "
-    "If the user asks for a summary, provide a summary of the context chunks provided. "
-    "For ALL other questions: If the exact answer cannot be found in the provided context, you MUST respond EXACTLY and ONLY with the phrase: "
-    '"Not found in the document." '
-    "Do not provide explanations. Do not provide alternative information. Do not mention what the text focuses on instead. "
-    "Do not guess. Do not use outside knowledge."
+    "You are CapitalQuery, a precise financial document analyst. You answer questions using ONLY "
+    "the context chunks provided below. Each chunk has a page number. "
+    "\n\n"
+    "Guidelines:\n"
+    "- Answer concisely but completely. Prefer structured formats when comparing data.\n"
+    "- For numerical comparisons, use markdown tables to present data cleanly.\n"
+    "- For trends and changes, state the direction and magnitude clearly (e.g. 'down 10% YoY').\n"
+    "- Use **bold** for key figures and important findings.\n"
+    "- Use bullet points for multi-part answers.\n"
+    "- Always cite the pages used at the end: [Sources: p3, p7]\n"
+    "- If data spans multiple rows/tables on the same page, consolidate into one clean table.\n"
+    "- Format large numbers with commas for readability (e.g. 4,354 not 4354).\n"
+    "\n"
+    "IMPORTANT: If the exact answer is not in the provided context, respond with ONLY: "
+    '"Not found in the document." Do not guess, explain, or use outside knowledge.'
 )

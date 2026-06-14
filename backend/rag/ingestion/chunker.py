@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Dict, List
 import tiktoken
 from rag.utils.config import CHUNK_SIZE, CHUNK_OVERLAP
+
+logger = logging.getLogger(__name__)
 
 
 class Chunker:
@@ -104,8 +107,7 @@ class Chunker:
                         step = 1
                     start += step
 
-        print(f"[Chunker] Created {len(all_chunks)} chunk(s) from "
-              f"{len(regions)} region(s)")
+        logger.info("Created %d chunk(s) from %d region(s)", len(all_chunks), len(regions))
         return all_chunks
 
     def count_tokens(self, text: str) -> int:
