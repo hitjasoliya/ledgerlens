@@ -1,4 +1,4 @@
 .env
-plan.md
-resume.md
+backend/data/cache/
+backend/static/figures/
 .claude
