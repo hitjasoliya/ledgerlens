@@ -33,7 +33,7 @@ export function Landing() {
       <main className="landing__main">
         <section className="landing__hero">
           <div className="landing__prompt">
-            <span>&gt; CapitalQuery.init()</span>
+            <span>&gt; LedgerLens.init()</span>
             <span className="landing__prompt-cursor" />
           </div>
 
@@ -93,7 +93,7 @@ export function Landing() {
       </main>
 
       <footer className="landing__footer">
-        <span>&copy; {new Date().getFullYear()} CapitalQuery</span>
+        <span>&copy; {new Date().getFullYear()} LedgerLens</span>
         <span className="landing__footer-dot">·</span>
         <span>Enterprise RAG Platform</span>
       </footer>

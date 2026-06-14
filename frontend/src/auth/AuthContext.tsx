@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           color: '#374151'
         }}
       >
-        Loading CapitalQuery...
+        Loading LedgerLens...
       </div>
     )
   }

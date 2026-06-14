@@ -100,7 +100,7 @@ export function ChatWindow({
             <div className="chat-window__empty-content">
               <div className="chat-window__empty-prompt">
                 <span className="chat-window__empty-prompt-prefix">$</span>
-                <span>capitalquery --ready</span>
+                <span>ledgerlens --ready</span>
               </div>
               <p className="chat-window__empty-desc">
                 {allowFile

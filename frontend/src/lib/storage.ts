@@ -1,4 +1,4 @@
-const NAMESPACE = 'capitalquery'
+const NAMESPACE = 'ledgerlens'
 
 export const StorageKeys = {
   users: `${NAMESPACE}.users`,

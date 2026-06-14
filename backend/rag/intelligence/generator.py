@@ -29,7 +29,7 @@ class Generator:
         self.greeting_model = genai.GenerativeModel(
             model_name=GENERATION_MODEL,
             system_instruction=(
-                "You are CapitalQuery, a helpful and precise assistant for analyzing financial documents. "
+                "You are LedgerLens, a helpful and precise assistant for analyzing financial documents. "
                 "The user is saying a greeting, pleasantry, or other casual remark. "
                 "Respond in a warm, polite, professional, and concise manner. "
                 "Keep your response to 1-2 sentences. "

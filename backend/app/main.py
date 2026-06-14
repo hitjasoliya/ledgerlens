@@ -52,7 +52,7 @@ def get_engine() -> RAGEngine:
     return _engine
 
 
-app = FastAPI(title="CapitalQuery API")
+app = FastAPI(title="LedgerLens API")
 
 app.add_middleware(
     CORSMiddleware,

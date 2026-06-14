@@ -42,7 +42,7 @@ export function ChatMessage({ message, userName, onRegenerate, isLast }: Props) 
       </div>
       <div className="chat-msg__content">
         <div className="chat-msg__author">
-          {isUser ? userName.toUpperCase() : 'CAPITALQUERY'}
+          {isUser ? userName.toUpperCase() : 'LEDGERLENS'}
           <span className="chat-msg__time">{formatTime(message.timestamp)}</span>
         </div>
         {message.attachedFile && (

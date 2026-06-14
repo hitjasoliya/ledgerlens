@@ -128,7 +128,7 @@ export function DashboardShell({ user, tabs, defaultTab }: Props) {
             <MenuIcon size={16} />
           </button>
           <div className="dash__breadcrumb">
-            <span className="dash__breadcrumb-app">CapitalQuery</span>
+            <span className="dash__breadcrumb-app">LedgerLens</span>
             <span className="dash__breadcrumb-sep">/</span>
             <span className="dash__breadcrumb-tab">{active?.label}</span>
           </div>

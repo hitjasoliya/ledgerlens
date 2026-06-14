@@ -1,4 +1,4 @@
-# CapitalQuery
+# LedgerLens
 
 Enterprise RAG platform for financial documents. Upload PDFs (earnings releases, annual reports, board outcomes), ask questions in natural language, get cited answers grounded in your data.
 
@@ -13,8 +13,8 @@ Enterprise RAG platform for financial documents. Upload PDFs (earnings releases,
 docker compose up -d
 
 # 2. Backend
-conda create -n capitalquery python=3.11 -y
-conda activate capitalquery
+conda create -n ledgerlens python=3.11 -y
+conda activate ledgerlens
 cd backend
 pip install docling fastapi uvicorn python-dotenv pydantic sqlalchemy psycopg2-binary PyJWT bcrypt "elasticsearch>=8.0,<9.0" tiktoken python-multipart rich requests google-generativeai PyMuPDF
 cp .env.example .env   # add your GEMINI_API_KEY
@@ -79,7 +79,7 @@ User Query → Hybrid Search (kNN + BM25 → RRF merge)
 | `ES_INDEX` | `rag_chunks` | Index name |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model for embeddings |
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/capitalquery` | PostgreSQL connection |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/ledgerlens` | PostgreSQL connection |
 | `JWT_SECRET` | — | **Required.** JWT signing secret |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Token lifetime |
 | `CHUNK_SIZE` | `500` | Token limit per chunk |

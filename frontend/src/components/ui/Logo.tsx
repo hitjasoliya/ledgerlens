@@ -10,47 +10,39 @@ export function Logo({ size = 'md', variant = 'light', showWordmark = true }: Pr
   return (
     <div className={`logo logo--${size} logo--${variant}`}>
       <div className="logo__mark" aria-hidden>
-        <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-          {/* Outer hexagon — structure / precision */}
-          <path
-            d="M20 2L36 11V29L20 38L4 29V11L20 2Z"
+        <svg viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Cash note */}
+          <rect
+            x="3" y="6" width="30" height="24" rx="1.5"
             stroke="currentColor"
-            strokeWidth="1.8"
+            strokeWidth="2"
             fill="none"
           />
-          {/* Inner hexagon — data / core */}
+          {/* Folded corner */}
           <path
-            d="M20 8L29 13.5V24.5L20 30L11 24.5V13.5L20 8Z"
+            d="M27 6L33 12V12.5"
             stroke="currentColor"
-            strokeWidth="1.2"
-            fill="none"
-            opacity="0.5"
-          />
-          {/* C — query lens */}
-          <path
-            d="M18 14C15.8 14 14 15.8 14 18V22C14 24.2 15.8 26 18 26"
-            stroke="currentColor"
-            strokeWidth="2.8"
+            strokeWidth="2"
             strokeLinecap="round"
+            strokeLinejoin="round"
             fill="none"
           />
-          {/* Q tail / pulse — the insight coming out */}
-          <line
-            x1="22" y1="22"
-            x2="27" y2="27"
-            stroke="currentColor"
-            strokeWidth="2.8"
-            strokeLinecap="round"
-          />
-          {/* Accent dot — data point */}
-          <circle cx="27" cy="27" r="2" fill="currentColor" />
-          {/* Small accent dot */}
-          <circle cx="13" cy="13" r="1.5" fill="currentColor" opacity="0.4" />
+          {/* Currency symbol */}
+          <text
+            x="18" y="22"
+            textAnchor="middle"
+            fontSize="14"
+            fontFamily="monospace"
+            fontWeight="700"
+            fill="currentColor"
+          >
+            $
+          </text>
         </svg>
       </div>
       {showWordmark && (
         <span className="logo__wordmark">
-          Capital<span className="logo__accent">Query</span>
+          Ledger<span className="logo__accent">Lens</span>
         </span>
       )}
     </div>

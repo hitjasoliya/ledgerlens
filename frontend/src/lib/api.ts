@@ -16,7 +16,7 @@ async function parseError(res: Response): Promise<string> {
 
 function getAuthHeader(): Record<string, string> {
   try {
-    const raw = localStorage.getItem('capitalquery.session')
+    const raw = localStorage.getItem('ledgerlens.session')
     if (raw) {
       const parsed = JSON.parse(raw) as { token?: string }
       if (parsed.token) {

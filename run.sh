@@ -9,7 +9,7 @@ fi
 
 # Visual Header
 echo -e "\033[36m==================================================\033[0m"
-echo -e "\033[36m      CapitalQuery — Unified Project Runner       \033[0m"
+echo -e "\033[36m      LedgerLens — Unified Project Runner       \033[0m"
 echo -e "\033[36m==================================================\033[0m"
 
 # 1. Port Checks
@@ -63,17 +63,17 @@ echo -e "\n\033[32mDatabases are healthy and ready!\033[0m"
 
 # 3. Environment & Python Setup
 echo -e "\033[34m[3/5] Detecting Python and Node environment...\033[0m"
-PYTHON_ENV="/opt/miniconda3/envs/capitalquery/bin/python"
-UVICORN_ENV="/opt/miniconda3/envs/capitalquery/bin/uvicorn"
+PYTHON_ENV="/opt/miniconda3/envs/ledgerlens/bin/python"
+UVICORN_ENV="/opt/miniconda3/envs/ledgerlens/bin/uvicorn"
 
 if [ -f "$PYTHON_ENV" ] && [ -f "$UVICORN_ENV" ]; then
-    echo "Using capitalquery Conda environment from: $PYTHON_ENV"
+    echo "Using ledgerlens Conda environment from: $PYTHON_ENV"
 else
     # Fallback to kingslayer or system
-    if conda info --envs | grep -q "capitalquery" 2>/dev/null; then
-        PYTHON_ENV="conda run -n capitalquery python"
-        UVICORN_ENV="conda run -n capitalquery uvicorn"
-        echo "Using capitalquery via conda run"
+    if conda info --envs | grep -q "ledgerlens" 2>/dev/null; then
+        PYTHON_ENV="conda run -n ledgerlens python"
+        UVICORN_ENV="conda run -n ledgerlens uvicorn"
+        echo "Using ledgerlens via conda run"
     elif conda info --envs | grep -q "kingslayer" 2>/dev/null; then
         PYTHON_ENV="conda run -n kingslayer python"
         UVICORN_ENV="conda run -n kingslayer uvicorn"

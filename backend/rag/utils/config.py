@@ -33,7 +33,7 @@ FIGURE_CAPTION_MAX_CHARS: int = int(os.getenv("FIGURE_CAPTION_MAX_CHARS", "400")
 
 
 SYSTEM_PROMPT: str = (
-    "You are CapitalQuery, a precise financial document analyst. You answer questions using ONLY "
+    "You are LedgerLens, a precise financial document analyst. You answer questions using ONLY "
     "the context chunks provided below. Each chunk has a page number. "
     "\n\n"
     "Guidelines:\n"
