@@ -54,6 +54,17 @@ export async function clearConversation(): Promise<void> {
   if (!res.ok) throw new Error(await parseError(res))
 }
 
+export async function deleteConversation(sessionId: string): Promise<void> {
+  const form = new FormData()
+  form.append('session_id', sessionId)
+  const res = await fetch(`${API_BASE}/api/chat/delete`, { 
+    method: 'POST',
+    headers: { ...getAuthHeader() },
+    body: form
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+}
+
 export type IngestOptions = {
   file: File
   userId: string

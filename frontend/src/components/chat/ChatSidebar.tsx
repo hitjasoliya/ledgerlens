@@ -74,17 +74,24 @@ export function ChatSidebar({ sessions, activeId, onSelect, onNew, onDelete, onC
                 </div>
               </div>
               {sessions.length > 1 && (
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   className="chat-item__delete"
                   aria-label="Delete chat"
                   onClick={(e) => {
                     e.stopPropagation()
                     onDelete(session.id)
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.stopPropagation()
+                      onDelete(session.id)
+                    }
+                  }}
                 >
                   <TrashIcon size={12} />
-                </button>
+                </div>
               )}
             </button>
           )

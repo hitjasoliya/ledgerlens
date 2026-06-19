@@ -254,6 +254,18 @@ class ESClient:
         except Exception as exc:
             raise RuntimeError(f"[ES] Failed to delete session chunks: {exc}") from exc
 
+    def delete_all_session_chunks(self, session_id: str) -> int:
+        body = {
+            "query": {
+                "term": {"metadata.session_id": session_id}
+            }
+        }
+        try:
+            res = self.es.delete_by_query(index=self.index_name, body=body)
+            return res.get("deleted", 0)
+        except Exception as exc:
+            raise RuntimeError(f"[ES] Failed to delete all session chunks: {exc}") from exc
+
 if __name__ == "__main__":
     client = ESClient()
     client.create_index_if_not_exists()

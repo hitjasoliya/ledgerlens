@@ -210,6 +210,80 @@ class DoclingPipeline:
             )
         return self._converter
 
+    def preview(self, pdf_path: str, cache_dir: Any) -> List[Dict[str, Any]]:
+        """Extract layout regions and render page images for admin preview."""
+        import fitz
+        import hashlib
+        from pathlib import Path
+
+        cache_dir_path = Path(cache_dir)
+
+        # 1. Render pages with PyMuPDF and calculate cache hash
+        pdf_doc = fitz.open(pdf_path)
+        dpi = 200
+        scale = dpi / 72.0
+
+        with open(pdf_path, "rb") as f:
+            raw_bytes = f.read()
+        file_hash = hashlib.md5(raw_bytes).hexdigest()
+
+        response_pages = []
+        page_heights = {}
+
+        for page_idx in range(len(pdf_doc)):
+            page_num = page_idx + 1
+            page = pdf_doc[page_idx]
+            page_heights[page_num] = page.rect.height
+
+            pix = page.get_pixmap(dpi=dpi)
+            cache_path = cache_dir_path / f"{file_hash}_p{page_num}_dpi{dpi}.png"
+            cache_path.write_bytes(pix.tobytes("png"))
+
+            response_pages.append({
+                "page_num": page_num,
+                "image_url": f"/api/cache/{file_hash}_p{page_num}_dpi{dpi}.png",
+                "width": int(page.rect.width),
+                "height": int(page.rect.height),
+                "regions": [],
+            })
+        pdf_doc.close()
+
+        # 2. Detect layout regions with Docling
+        try:
+            converter = self._get_converter()
+            result = converter.convert(pdf_path)
+            doc = result.document
+
+            for item, _ in doc.iterate_items():
+                if not item.prov:
+                    continue
+                prov = item.prov[0]
+                page_no = prov.page_no
+                bbox = prov.bbox
+                if not bbox:
+                    continue
+
+                h = page_heights.get(page_no, 792.0)
+                region = {
+                    "type": item.label,
+                    "bbox": [
+                        int(bbox.l * scale),
+                        int((h - bbox.t) * scale),
+                        int(bbox.r * scale),
+                        int((h - bbox.b) * scale),
+                    ],
+                    "score": 0.95,
+                    "page": page_no,
+                }
+                for rp in response_pages:
+                    if rp["page_num"] == page_no:
+                        rp["regions"].append(region)
+                        break
+        except Exception as e:
+            logger.warning("Docling layout detection failed in preview: %s", e)
+
+        return response_pages
+
     def _convert_pdf(self, pdf_path: str) -> List[Dict[str, Any]]:
         """Convert PDF to list of typed item dicts using Docling."""
         converter = self._get_converter()

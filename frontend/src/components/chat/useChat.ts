@@ -17,8 +17,9 @@ function readAll(ownerId: string) {
 function writeAll(ownerId: string, sessions: ChatSession[]) {
   writeJSON(StorageKeys.chats(ownerId), sessions)
 }
-import { sendMessage } from '../../lib/api'
+import { sendMessage, deleteConversation } from '../../lib/api'
 import { bus, Topics } from '../../lib/eventBus'
+import { deleteFile, listAllFiles } from '../../services/fileService'
 
 type UseChatOptions = {
   ownerId: string
@@ -100,6 +101,24 @@ export function useChat({ ownerId }: UseChatOptions): UseChatResult {
 
   const removeSession = useCallback(
     (id: string) => {
+      const confirmDelete = window.confirm(
+        "Are you sure you want to permanently delete this chat session? This will remove all message history and delete all uploaded document embeddings associated with this session."
+      )
+      if (!confirmDelete) return
+
+      // Wipes backend session chunks and history in background
+      deleteConversation(id).catch((err) => {
+        console.error("Failed to delete conversation on backend:", err)
+      })
+
+      // Wipes client-side uploaded files for this session
+      try {
+        const sessionFiles = listAllFiles().filter((f) => f.sessionId === id)
+        sessionFiles.forEach((f) => deleteFile(f.id))
+      } catch (err) {
+        console.error("Failed to delete session files from local storage:", err)
+      }
+
       deleteSession(ownerId, id)
       const remaining = listSessions(ownerId)
       if (remaining.length === 0) {

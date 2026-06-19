@@ -1,18 +1,38 @@
-from __future__ import annotations
-
+import abc
 from typing import Any, Dict, List
 
 from rag.utils.config import GEMINI_API_KEY, GENERATION_MODEL, SYSTEM_PROMPT
 from rag.utils.timeout import TimeoutError as ThreadTimeoutError
 
 
-class Generator:
+class Generator(abc.ABC):
+    @abc.abstractmethod
+    def generate(
+        self,
+        question: str,
+        context_chunks: List[Dict[str, Any]],
+        conversation_history: List[Dict[str, str]] | None = None,
+    ) -> str:
+        """Generate an answer using context chunks and conversation history."""
+        pass
+
+    @abc.abstractmethod
+    def generate_greeting(
+        self,
+        question: str,
+        conversation_history: List[Dict[str, str]] | None = None,
+    ) -> str:
+        """Generate a response to casual greetings and pleasantries."""
+        pass
+
+
+class GeminiGenerator(Generator):
     GENERATE_TIMEOUT: int = 60  # seconds
 
     def __init__(self) -> None:
         if not GEMINI_API_KEY:
             raise ValueError(
-                "[Generator] GEMINI_API_KEY is not set. "
+                "[GeminiGenerator] GEMINI_API_KEY is not set. "
                 "Please add it to your .env file."
             )
         import google.generativeai as genai
@@ -85,7 +105,7 @@ class Generator:
             raise RuntimeError(f"Answer generation timed out after {self.GENERATE_TIMEOUT}s")
         except Exception as exc:
             raise RuntimeError(
-                f"[Generator] Failed to generate answer: {exc}"
+                f"[GeminiGenerator] Failed to generate answer: {exc}"
             ) from exc
 
     def generate_greeting(
@@ -106,12 +126,35 @@ class Generator:
             raise RuntimeError(f"Greeting generation timed out after {self.GENERATE_TIMEOUT}s")
         except Exception as exc:
             raise RuntimeError(
-                f"[Generator] Failed to generate greeting: {exc}"
+                f"[GeminiGenerator] Failed to generate greeting: {exc}"
             ) from exc
 
 
+class StubGenerator(Generator):
+    """An in-memory stub implementation of the Generator interface for off-network tests."""
+
+    def __init__(self, stub_answer: str = "Stubbed Response", stub_greeting: str = "Hello from Stub!") -> None:
+        self.stub_answer = stub_answer
+        self.stub_greeting = stub_greeting
+
+    def generate(
+        self,
+        question: str,
+        context_chunks: List[Dict[str, Any]],
+        conversation_history: List[Dict[str, str]] | None = None,
+    ) -> str:
+        return self.stub_answer
+
+    def generate_greeting(
+        self,
+        question: str,
+        conversation_history: List[Dict[str, str]] | None = None,
+    ) -> str:
+        return self.stub_greeting
+
+
 if __name__ == "__main__":
-    generator = Generator()
+    generator = GeminiGenerator()
 
     test_chunks = [
         {
@@ -130,4 +173,4 @@ if __name__ == "__main__":
         question="What was the revenue for FY2024?",
         context_chunks=test_chunks,
     )
-    print(f"✅ Generator working\n\nAnswer:\n{answer}")
+    print(f"✅ GeminiGenerator working\n\nAnswer:\n{answer}")

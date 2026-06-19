@@ -298,6 +298,18 @@ def end_session(
     return ClearChatResponse(ok=True)
 
 
+@app.post("/api/chat/delete", response_model=ClearChatResponse)
+def delete_chat(
+    session_id: str = Form(...),
+    current_user: DBUser = Depends(get_current_user)
+) -> ClearChatResponse:
+    engine = get_engine()
+    deleted = engine.es_client.delete_all_session_chunks(session_id)
+    logger.info("Session %s deleted. Wiped %d total chunks (embeddings).", session_id, deleted)
+    engine.clear_history(session_id)
+    return ClearChatResponse(ok=True)
+
+
 @app.post("/api/admin/layout-preview")
 async def layout_preview(
     file: UploadFile = File(...),
@@ -313,74 +325,9 @@ async def layout_preview(
             content = await file.read()
             tmp.write(content)
 
-        import fitz
-        from docling.datamodel.base_models import InputFormat
-        from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.document_converter import DocumentConverter, PdfFormatOption
-
-        # Render pages with PyMuPDF
-        pdf_doc = fitz.open(tmp_path)
-        dpi = 200
-        scale = dpi / 72
-        raw_bytes = open(tmp_path, "rb").read()
-        file_hash = hashlib.md5(raw_bytes).hexdigest()
-
-        response_pages = []
-        for page_idx in range(len(pdf_doc)):
-            page = pdf_doc[page_idx]
-            pix = page.get_pixmap(dpi=dpi)
-            cache_path = CACHE_DIR / f"{file_hash}_p{page_idx + 1}_dpi{dpi}.png"
-            cache_path.write_bytes(pix.tobytes("png"))
-            response_pages.append({
-                "page_num": page_idx + 1,
-                "image_url": f"/api/cache/{file_hash}_p{page_idx + 1}_dpi{dpi}.png",
-                "width": int(page.rect.width),
-                "height": int(page.rect.height),
-                "regions": [],
-            })
-        pdf_doc.close()
-
-        # Detect layout regions with Docling
-        try:
-            pipeline_options = PdfPipelineOptions()
-            pipeline_options.do_ocr = False
-            pipeline_options.do_table_structure = True
-            converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
-                }
-            )
-            result = converter.convert(tmp_path)
-            doc = result.document
-
-            for item, _ in doc.iterate_items():
-                if not item.prov:
-                    continue
-                prov = item.prov[0]
-                page_no = prov.page_no
-                bbox = prov.bbox
-                if not bbox:
-                    continue
-                # Docling bbox: (l, b, r, t) with bottom-left origin
-                region = {
-                    "type": item.label,
-                    "bbox": [
-                        int(bbox.l * scale),
-                        int((page.rect.height - bbox.t) * scale),
-                        int(bbox.r * scale),
-                        int((page.rect.height - bbox.b) * scale),
-                    ],
-                    "score": 0.95,
-                    "page": page_no,
-                }
-                for rp in response_pages:
-                    if rp["page_num"] == page_no:
-                        rp["regions"].append(region)
-                        break
-        except Exception as e:
-            logger.warning("Docling layout detection failed: %s", e)
-
-        return {"pages": response_pages}
+        pipeline = DoclingPipeline()
+        pages = pipeline.preview(tmp_path, CACHE_DIR)
+        return {"pages": pages}
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

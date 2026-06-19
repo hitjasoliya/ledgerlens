@@ -5,7 +5,7 @@ import re
 from typing import Any, Dict, List
 
 from rag.intelligence.embedder import Embedder
-from rag.intelligence.generator import Generator
+from rag.intelligence.generator import Generator, GeminiGenerator
 from rag.storage.es_client import ESClient
 from rag.utils.config import TOP_K
 
@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class RAGEngine:
     MAX_HISTORY_TURNS: int = 6
 
-    def __init__(self) -> None:
+    def __init__(self, generator: Generator | None = None) -> None:
         self.embedder = Embedder()
-        self.generator = Generator()
+        self.generator = generator or GeminiGenerator()
         self.es_client = ESClient()
         self._histories: Dict[str, List[Dict[str, str]]] = {}
 
