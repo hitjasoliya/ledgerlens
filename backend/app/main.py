@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, get_db, SessionLocal
-from app.models import User as DBUser
+from app.models import User as DBUser, Document as DBDocument
 from app.auth import get_password_hash, verify_password, create_access_token, get_current_user, get_admin_user
 from app.schemas import (
     ChatRequest,
@@ -31,9 +31,12 @@ from app.schemas import (
     LoginResponse,
     UserResponse,
     UserCreateRequest,
+    DocumentResponse,
+    UpdateAccessRequest,
 )
 from rag.ingestion.docling_pipeline import DoclingPipeline
 from rag.orchestrator.engine import RAGEngine
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -246,6 +249,7 @@ async def ingest(
     session_id: str = Form("default_session"),
     is_persistent: bool = Form(False),
     allowed_users: str = Form(""),
+    db: Session = Depends(get_db),
     current_user: DBUser = Depends(get_current_user)
 ) -> IngestResponse:
     if not file.filename or not file.filename.lower().endswith(".pdf"):
@@ -270,13 +274,35 @@ async def ingest(
             is_persistent=is_persistent,
             allowed_users=allowed_users_list
         )
+
+        doc_id = None
+        if is_persistent:
+            new_doc = DBDocument(
+                filename=file.filename,
+                source=str(summary["source"]),
+                uploaded_by_id=current_user.id,
+                scope="admin" if current_user.role == "admin" else "employee",
+                access_list=allowed_users_list,
+                pages_parsed=int(summary["pages_parsed"]),
+                chunks_created=int(summary["chunks_created"]),
+                chunks_indexed=int(summary["chunks_indexed"]),
+                is_persistent=is_persistent,
+                session_id=session_id,
+            )
+            db.add(new_doc)
+            db.commit()
+            db.refresh(new_doc)
+            doc_id = new_doc.id
+
         return IngestResponse(
             source=str(summary["source"]),
             pages_parsed=int(summary["pages_parsed"]),
             chunks_created=int(summary["chunks_created"]),
             chunks_indexed=int(summary["chunks_indexed"]),
             pages_failed=int(summary.get("pages_failed", 0)),
+            id=doc_id
         )
+
     except FileNotFoundError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -284,6 +310,7 @@ async def ingest(
     finally:
         if tmp_path and os.path.isfile(tmp_path):
             os.unlink(tmp_path)
+
 
 
 @app.post("/api/session/end", response_model=ClearChatResponse)
@@ -334,3 +361,104 @@ async def layout_preview(
     finally:
         if tmp_path and os.path.isfile(tmp_path):
             os.unlink(tmp_path)
+
+
+@app.get("/api/documents", response_model=list[DocumentResponse])
+def get_documents(
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+) -> list[DocumentResponse]:
+    if current_user.role == "admin":
+        docs = db.query(DBDocument).filter(DBDocument.is_persistent == True).all()
+    else:
+        all_docs = db.query(DBDocument).filter(DBDocument.is_persistent == True).all()
+        docs = []
+        for d in all_docs:
+            if d.scope == "employee" and d.uploaded_by_id == current_user.id:
+                docs.append(d)
+            elif d.scope == "admin" and (current_user.id in (d.access_list or [])):
+                docs.append(d)
+    
+    users_map = {u.id: u.username for u in db.query(DBUser).all()}
+    return [
+        DocumentResponse(
+            id=d.id,
+            filename=d.filename,
+            source=d.source,
+            uploaded_by_id=d.uploaded_by_id,
+            uploaded_by=users_map.get(d.uploaded_by_id, "unknown"),
+            uploaded_at=int(d.uploaded_at.timestamp() * 1000),
+            scope=d.scope,
+            access_list=d.access_list,
+            pages_parsed=d.pages_parsed,
+            chunks_created=d.chunks_created,
+            chunks_indexed=d.chunks_indexed,
+            is_persistent=d.is_persistent,
+            session_id=d.session_id,
+        )
+        for d in docs
+    ]
+
+
+@app.put("/api/documents/{document_id}/access", response_model=DocumentResponse)
+def update_document_access(
+    document_id: str,
+    body: UpdateAccessRequest,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_admin_user),
+) -> DocumentResponse:
+    doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    doc.access_list = body.access_list
+    db.commit()
+    db.refresh(doc)
+    
+    user = db.query(DBUser).filter(DBUser.id == doc.uploaded_by_id).first()
+    uploaded_by = user.username if user else "unknown"
+    
+    return DocumentResponse(
+        id=doc.id,
+        filename=doc.filename,
+        source=doc.source,
+        uploaded_by_id=doc.uploaded_by_id,
+        uploaded_by=uploaded_by,
+        uploaded_at=int(doc.uploaded_at.timestamp() * 1000),
+        scope=doc.scope,
+        access_list=doc.access_list,
+        pages_parsed=doc.pages_parsed,
+        chunks_created=doc.chunks_created,
+        chunks_indexed=doc.chunks_indexed,
+        is_persistent=doc.is_persistent,
+        session_id=doc.session_id,
+    )
+
+
+
+@app.delete("/api/documents/{document_id}", response_model=ClearChatResponse)
+def delete_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+) -> ClearChatResponse:
+    doc = db.query(DBDocument).filter(DBDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    # Security boundary
+    if current_user.role != "admin" and doc.uploaded_by_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this document")
+    
+    filename = doc.source
+    
+    # 1. Delete from PostgreSQL
+    db.delete(doc)
+    db.commit()
+    
+    # 2. Delete chunks from Elasticsearch
+    engine = get_engine()
+    deleted_chunks = engine.es_client.delete_document_chunks(filename)
+    logger.info("Purged %d chunks from Elasticsearch for document %s", deleted_chunks, filename)
+    
+    return ClearChatResponse(ok=True)
+

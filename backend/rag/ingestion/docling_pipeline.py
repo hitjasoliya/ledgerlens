@@ -3,23 +3,13 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from typing import Any, Dict, List
-
-from rich.console import Console
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
+from typing import Any, Dict, List, Callable
 
 from rag.intelligence.embedder import Embedder
 from rag.storage.es_client import ESClient
 
-console = Console()
 logger = logging.getLogger(__name__)
+
 
 
 class DoclingChunker:
@@ -187,11 +177,17 @@ class DoclingPipeline:
     reading order, and hierarchical structure in one call.
     """
 
-    def __init__(self) -> None:
-        self.embedder = Embedder()
-        self.es_client = ESClient()
-        self.chunker = DoclingChunker()
+    def __init__(
+        self,
+        embedder: Embedder | None = None,
+        es_client: ESClient | None = None,
+        chunker: DoclingChunker | None = None,
+    ) -> None:
+        self.embedder = embedder or Embedder()
+        self.es_client = es_client or ESClient()
+        self.chunker = chunker or DoclingChunker()
         self._converter = None
+
 
     def _get_converter(self):
         if self._converter is None:
@@ -350,15 +346,16 @@ class DoclingPipeline:
         session_id: str = "default_session",
         is_persistent: bool = False,
         allowed_users: List[str] | None = None,
+        progress_callback: Callable[[str, int, int], None] | None = None,
     ) -> Dict[str, Any]:
         if allowed_users is None:
             allowed_users = []
 
         source_filename = os.path.basename(pdf_path)
-        console.rule(f"[bold blue]Docling Ingestion: {source_filename}")
+        logger.info("Docling Ingestion started for source: %s", source_filename)
 
         # Step 1: Convert PDF with Docling
-        console.print("[bold]Step 1/3:[/bold] Converting PDF with Docling...")
+        logger.info("Step 1/3: Converting PDF with Docling...")
         try:
             items = self._convert_pdf(pdf_path)
         except Exception as e:
@@ -368,21 +365,18 @@ class DoclingPipeline:
         pages = sorted(set(it["page"] for it in items))
         tables = sum(1 for it in items if it["type"] == "table")
         pictures = sum(1 for it in items if it["type"] == "picture")
-        console.print(
-            f"  [green]Done[/green] — {len(pages)} page(s), {len(items)} item(s) "
-            f"({tables} table(s), {pictures} picture(s))"
+        logger.info(
+            "Step 1/3 Complete: %d page(s), %d item(s) (%d table(s), %d picture(s))",
+            len(pages), len(items), tables, pictures
         )
 
         # Step 2: Chunk
-        console.print("[bold]Step 2/3:[/bold] Chunking document...")
+        logger.info("Step 2/3: Chunking document...")
         chunks = self.chunker.chunk_items(items, source_filename=source_filename)
-        console.print(f"  [green]Done[/green] — {len(chunks)} chunk(s) created")
+        logger.info("Step 2/3 Complete: %d chunk(s) created", len(chunks))
 
         if not chunks:
-            console.print(
-                "[yellow]WARNING: No chunks created. "
-                "The PDF may be empty or image-only.[/yellow]"
-            )
+            logger.warning("No chunks created. The PDF may be empty or image-only.")
             return {
                 "source": source_filename,
                 "pages_parsed": len(pages),
@@ -392,27 +386,18 @@ class DoclingPipeline:
             }
 
         # Step 3: Embed + Index
-        console.print("[bold]Step 3/3:[/bold] Embedding and indexing...")
+        logger.info("Step 3/3: Embedding and indexing...")
         texts = [chunk["text"] for chunk in chunks]
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Embedding chunks", total=len(texts))
+        all_embeddings: List[List[float]] = []
+        batch_size = self.embedder.BATCH_SIZE
 
-            all_embeddings: List[List[float]] = []
-            batch_size = self.embedder.BATCH_SIZE
-
-            for start in range(0, len(texts), batch_size):
-                batch = texts[start : start + batch_size]
-                batch_embeddings = self.embedder.embed_batch(batch)
-                all_embeddings.extend(batch_embeddings)
-                progress.update(task, advance=len(batch))
+        for start in range(0, len(texts), batch_size):
+            batch = texts[start : start + batch_size]
+            batch_embeddings = self.embedder.embed_batch(batch)
+            all_embeddings.extend(batch_embeddings)
+            if progress_callback:
+                progress_callback("embedding", len(all_embeddings), len(texts))
 
         for chunk, embedding in zip(chunks, all_embeddings):
             chunk["embedding"] = embedding
@@ -421,30 +406,17 @@ class DoclingPipeline:
             chunk["metadata"]["is_persistent"] = is_persistent
             chunk["metadata"]["allowed_users"] = allowed_users
 
-        console.print(
-            f"  [green]Done[/green] — {len(all_embeddings)} embedding(s) generated"
-        )
-
         self.es_client.create_index_if_not_exists()
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(),
-            MofNCompleteColumn(),
-            TimeElapsedColumn(),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Indexing chunks", total=len(chunks))
+        indexed_count = 0
+        upsert_batch_size = 200
 
-            indexed_count = 0
-            upsert_batch_size = 200
-
-            for start in range(0, len(chunks), upsert_batch_size):
-                batch = chunks[start : start + upsert_batch_size]
-                count = self.es_client.upsert_chunks(batch)
-                indexed_count += count
-                progress.update(task, advance=len(batch))
+        for start in range(0, len(chunks), upsert_batch_size):
+            batch = chunks[start : start + upsert_batch_size]
+            count = self.es_client.upsert_chunks(batch)
+            indexed_count += count
+            if progress_callback:
+                progress_callback("indexing", indexed_count, len(chunks))
 
         summary = {
             "source": source_filename,
@@ -454,12 +426,13 @@ class DoclingPipeline:
             "pages_failed": 0,
         }
 
-        console.rule("[bold green]Docling Ingestion Complete")
-        console.print(f"  Source:   {summary['source']}")
-        console.print(f"  Pages:    {summary['pages_parsed']}")
-        console.print(f"  Chunks:   {summary['chunks_created']}")
-        console.print(f"  Indexed:  {summary['chunks_indexed']}")
-        console.print()
+        logger.info(
+            "Docling Ingestion Complete: %s (%d pages, %d chunks created, %d chunks indexed)",
+            summary["source"],
+            summary["pages_parsed"],
+            summary["chunks_created"],
+            summary["chunks_indexed"],
+        )
 
         return summary
 
@@ -471,6 +444,53 @@ if __name__ == "__main__":
         print("Usage: python -m rag.ingestion.docling_pipeline <path/to/file.pdf>")
         sys.exit(1)
 
-    pipeline = DoclingPipeline()
-    result = pipeline.run(sys.argv[1])
-    print(f"\nPipeline complete: {result}")
+    def main():
+        # CLI Progress implementation using rich
+        from rich.console import Console
+        from rich.progress import (
+            BarColumn,
+            MofNCompleteColumn,
+            Progress,
+            SpinnerColumn,
+            TextColumn,
+            TimeElapsedColumn,
+        )
+
+        console = Console()
+        console.rule(f"[bold blue]Docling Ingestion CLI: {os.path.basename(sys.argv[1])}")
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            console=console,
+        ) as progress:
+            embed_task = None
+            index_task = None
+
+            def cli_progress(stage: str, completed: int, total: int):
+                nonlocal embed_task, index_task
+                if stage == "embedding":
+                    if embed_task is None:
+                        embed_task = progress.add_task("[cyan]Embedding chunks", total=total)
+                    progress.update(embed_task, completed=completed)
+                elif stage == "indexing":
+                    if index_task is None:
+                        index_task = progress.add_task("[green]Indexing chunks", total=total)
+                    progress.update(index_task, completed=completed)
+
+            pipeline = DoclingPipeline()
+            result = pipeline.run(sys.argv[1], progress_callback=cli_progress)
+            
+            console.rule("[bold green]Docling Ingestion CLI Complete")
+            console.print(f"  Source:   {result['source']}")
+            console.print(f"  Pages:    {result['pages_parsed']}")
+            console.print(f"  Chunks:   {result['chunks_created']}")
+            console.print(f"  Indexed:  {result['chunks_indexed']}")
+            console.print()
+
+    main()
+
+

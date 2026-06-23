@@ -4,7 +4,7 @@ import { ChatSidebar } from './ChatSidebar'
 import { ChatWindow } from './ChatWindow'
 import { useChat } from './useChat'
 import { ingestPdf } from '../../lib/api'
-import { createFile, findFile } from '../../services/fileService'
+import { createFile } from '../../services/fileService'
 import { writeSessionJSON, StorageKeys, readSessionJSON } from '../../lib/storage'
 import './ChatShell.css'
 
@@ -27,8 +27,8 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
 
   const contextFile = useMemo<FileEntry | null>(() => {
     if (!chat.activeSession?.contextFileId) return null
-    return findFile(chat.activeSession.contextFileId)
-  }, [chat.activeSession])
+    return accessibleFiles.find((f) => f.id === chat.activeSession?.contextFileId) || null
+  }, [chat.activeSession, accessibleFiles])
 
   const handleSend = useCallback(
     async (text: string, file?: File) => {
@@ -47,7 +47,7 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
           })
 
           if (fileScope === 'employee') {
-            attachedEntry = createFile({
+            attachedEntry = await createFile({
               filename: file.name,
               source: result.source,
               uploadedBy: user.username,
@@ -59,6 +59,7 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
               chunksIndexed: result.chunks_indexed,
               isPersistent: true,
               sessionId: chat.activeSession.id,
+              id: result.id,
             })
           } else {
             const key = StorageKeys.sessionFiles(chat.activeSession.id)

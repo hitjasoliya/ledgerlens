@@ -112,12 +112,15 @@ export function useChat({ ownerId }: UseChatOptions): UseChatResult {
       })
 
       // Wipes client-side uploaded files for this session
-      try {
-        const sessionFiles = listAllFiles().filter((f) => f.sessionId === id)
-        sessionFiles.forEach((f) => deleteFile(f.id))
-      } catch (err) {
-        console.error("Failed to delete session files from local storage:", err)
-      }
+      listAllFiles()
+        .then((allFiles) => {
+          const sessionFiles = allFiles.filter((f) => f.sessionId === id)
+          sessionFiles.forEach((f) => deleteFile(f.id))
+        })
+        .catch((err) => {
+          console.error("Failed to delete session files:", err)
+        })
+
 
       deleteSession(ownerId, id)
       const remaining = listSessions(ownerId)

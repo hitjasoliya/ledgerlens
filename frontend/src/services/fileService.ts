@@ -1,79 +1,96 @@
-import type { FileEntry, FileScope } from '../types'
-import { uid } from '../lib/ids'
-import { readJSON, StorageKeys, writeJSON } from '../lib/storage'
+import type { FileEntry } from '../types'
+import { fetchDocuments, removeDocument, updateDocumentAccess } from '../lib/api'
 import { bus, Topics } from '../lib/eventBus'
 
-export type CreateFileInput = {
-  filename: string
-  source: string
-  uploadedBy: string
-  uploadedById: string
-  scope: FileScope
-  accessList: string[]
-  pagesParsed: number
-  chunksCreated: number
-  chunksIndexed: number
-  isPersistent: boolean
-  sessionId: string
+function mapDocument(doc: any): FileEntry {
+  return {
+    id: doc.id,
+    filename: doc.filename,
+    source: doc.source,
+    uploadedBy: doc.uploaded_by,
+    uploadedById: doc.uploaded_by_id,
+    uploadedAt: doc.uploaded_at,
+    scope: doc.scope,
+    accessList: doc.access_list,
+    pagesParsed: doc.pages_parsed,
+    chunksCreated: doc.chunks_created,
+    chunksIndexed: doc.chunks_indexed,
+    isPersistent: doc.is_persistent,
+    sessionId: doc.session_id,
+  }
 }
 
-function readAll(): FileEntry[] {
-  return readJSON<FileEntry[]>(StorageKeys.files, [])
+export async function listAllFiles(): Promise<FileEntry[]> {
+  try {
+    const docs = await fetchDocuments()
+    return docs.map(mapDocument).sort((a, b) => b.uploadedAt - a.uploadedAt)
+  } catch (e) {
+    console.error('Failed to list all files', e)
+    return []
+  }
 }
 
-function writeAll(files: FileEntry[]): void {
-  writeJSON(StorageKeys.files, files)
+export async function listAdminFiles(): Promise<FileEntry[]> {
+  const all = await listAllFiles()
+  return all.filter((f) => f.scope === 'admin')
 }
 
-export function listAllFiles(): FileEntry[] {
-  return readAll().sort((a, b) => b.uploadedAt - a.uploadedAt)
-}
-
-export function listAdminFiles(): FileEntry[] {
-  return listAllFiles().filter((f) => f.scope === 'admin')
-}
-
-export function listFilesAccessibleTo(userId: string): FileEntry[] {
-  return listAllFiles().filter(
+export async function listFilesAccessibleTo(userId: string): Promise<FileEntry[]> {
+  const all = await listAllFiles()
+  return all.filter(
     (f) =>
       f.scope === 'admin' &&
       (f.accessList.includes(userId) || f.uploadedById === userId),
   )
 }
 
-export function listFilesOwnedBy(userId: string): FileEntry[] {
-  return listAllFiles().filter(
-    (f) => f.scope === 'employee' && f.uploadedById === userId,
-  )
+export async function listFilesOwnedBy(userId: string): Promise<FileEntry[]> {
+  const all = await listAllFiles()
+  return all.filter((f) => f.scope === 'employee' && f.uploadedById === userId)
 }
 
-export function findFile(id: string): FileEntry | null {
-  return readAll().find((f) => f.id === id) ?? null
+export function findFile(_id: string): FileEntry | null {
+  // Note: findFile usage is deprecated in favour of direct accessibleFiles lookup in ChatShell.tsx
+  return null
 }
 
-export function createFile(input: CreateFileInput): FileEntry {
-  const entry: FileEntry = {
-    ...input,
-    id: uid('file'),
+export async function createFile(input: any): Promise<FileEntry> {
+  // File is automatically created by the backend ingest endpoint.
+  // We emit Topics.files to notify hooks to refresh document state.
+  bus.emit(Topics.files)
+  return {
+    id: input.id || '',
+    filename: input.filename,
+    source: input.source,
+    uploadedBy: input.uploadedBy,
+    uploadedById: input.uploadedById,
     uploadedAt: Date.now(),
+    scope: input.scope,
+    accessList: input.accessList,
+    pagesParsed: input.pagesParsed,
+    chunksCreated: input.chunksCreated,
+    chunksIndexed: input.chunksIndexed,
+    isPersistent: input.isPersistent,
+    sessionId: input.sessionId,
   }
-  writeAll([entry, ...readAll()])
-  bus.emit(Topics.files)
-  return entry
 }
 
-export function updateFileAccess(id: string, accessList: string[]): FileEntry | null {
-  const files = readAll()
-  const idx = files.findIndex((f) => f.id === id)
-  if (idx === -1) return null
-  const updated: FileEntry = { ...files[idx], accessList }
-  files[idx] = updated
-  writeAll(files)
-  bus.emit(Topics.files)
-  return updated
+export async function updateFileAccess(id: string, accessList: string[]): Promise<FileEntry | null> {
+  try {
+    const updated = await updateDocumentAccess(id, accessList)
+    bus.emit(Topics.files)
+    return mapDocument(updated)
+  } catch (e) {
+    console.error('Failed to update access', e)
+    return null
+  }
 }
 
-export function deleteFile(id: string): void {
-  writeAll(readAll().filter((f) => f.id !== id))
-  bus.emit(Topics.files)
+export async function deleteFile(id: string): Promise<void> {
+  try {
+    await removeDocument(id)
+    bus.emit(Topics.files)
+  } catch (e) {
+    console.error('Failed to delete file', e)
+  }
 }

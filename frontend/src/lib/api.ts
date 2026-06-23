@@ -175,3 +175,34 @@ export async function previewLayout(file: File): Promise<any> {
   if (!res.ok) throw new Error(await parseError(res))
   return await res.json()
 }
+
+export async function fetchDocuments(): Promise<any[]> {
+  const res = await fetch(`${API_BASE}/api/documents`, {
+    method: 'GET',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return (await res.json()) as any[]
+}
+
+export async function updateDocumentAccess(id: string, accessList: string[]): Promise<any> {
+  const res = await fetch(`${API_BASE}/api/documents/${id}/access`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader()
+    },
+    body: JSON.stringify({ access_list: accessList }),
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return await res.json()
+}
+
+export async function removeDocument(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/documents/${id}`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+}
+

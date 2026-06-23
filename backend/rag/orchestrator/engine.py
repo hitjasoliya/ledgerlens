@@ -7,6 +7,8 @@ from typing import Any, Dict, List
 from rag.intelligence.embedder import Embedder
 from rag.intelligence.generator import Generator, GeminiGenerator
 from rag.storage.es_client import ESClient
+from rag.orchestrator.router import QueryRouter
+from rag.orchestrator.citation import CitationParser
 from rag.utils.config import TOP_K
 
 logger = logging.getLogger(__name__)
@@ -15,10 +17,17 @@ logger = logging.getLogger(__name__)
 class RAGEngine:
     MAX_HISTORY_TURNS: int = 6
 
-    def __init__(self, generator: Generator | None = None) -> None:
+    def __init__(
+        self,
+        generator: Generator | None = None,
+        query_router: QueryRouter | None = None,
+        citation_parser: CitationParser | None = None,
+    ) -> None:
         self.embedder = Embedder()
         self.generator = generator or GeminiGenerator()
         self.es_client = ESClient()
+        self.query_router = query_router or QueryRouter()
+        self.citation_parser = citation_parser or CitationParser()
         self._histories: Dict[str, List[Dict[str, str]]] = {}
 
     def _get_history(self, session_id: str) -> List[Dict[str, str]]:
@@ -35,7 +44,7 @@ class RAGEngine:
         conv_history = self._get_history(current_session_id)
         conv_history.append({"role": "user", "content": question.strip()})
 
-        if self._is_greeting_or_pleasantry(question):
+        if self.query_router.is_greeting(question):
             try:
                 history_for_gen = conv_history[:-1]
                 answer = self.generator.generate_greeting(
@@ -95,7 +104,7 @@ class RAGEngine:
                 f"Failed to generate answer: {exc}", current_session_id
             )
 
-        citations = self._parse_citations(answer, retrieved_chunks)
+        citations = self.citation_parser.parse_citations(answer, retrieved_chunks)
 
         conv_history.append({"role": "assistant", "content": answer})
         self._histories[current_session_id] = self._trim_history(conv_history)
@@ -117,40 +126,6 @@ class RAGEngine:
         else:
             self._histories.clear()
 
-    def _parse_citations(
-        self,
-        answer: str,
-        retrieved_chunks: List[Dict[str, Any]],
-    ) -> List[Dict[str, str]]:
-        citations: List[Dict[str, str]] = []
-
-        match = re.search(r"\[Sources?:\s*(.*?)\]", answer, re.IGNORECASE)
-        if match:
-            sources_str = match.group(1)
-            page_numbers = re.findall(r"p(\d+)", sources_str, re.IGNORECASE)
-            cited_pages = {int(p) for p in page_numbers}
-
-            for chunk in retrieved_chunks:
-                p = int(chunk["page"])
-                if p in cited_pages:
-                    citations.append({
-                        "page": p,
-                        "chunk_id": chunk["chunk_id"],
-                    })
-                    cited_pages.discard(p)
-
-            for page in cited_pages:
-                citations.append({"page": page, "chunk_id": "unknown"})
-        else:
-            for chunk in retrieved_chunks:
-                citations.append({
-                    "page": int(chunk["page"]),
-                    "chunk_id": chunk["chunk_id"],
-                })
-
-        citations.sort(key=lambda c: c["page"])
-        return citations
-
     def _error_response(self, message: str, session_id: str = "default_session") -> Dict[str, Any]:
         error_answer = f"⚠️  Error: {message}"
         conv_history = self._get_history(session_id)
@@ -161,36 +136,6 @@ class RAGEngine:
             "citations": [],
             "chunks_used": 0,
         }
-
-    def _is_greeting_or_pleasantry(self, query: str) -> bool:
-        q = query.strip().lower().rstrip("?.!")
-        
-        common_phrases = {
-            "hi", "hello", "hey", "hola", "greetings", "good morning", 
-            "good afternoon", "good evening", "howdy", "yo", "sup",
-            "how are you", "hows it going", "how are you doing", "whats up",
-            "hi there", "hello there", "hey there", "thanks", "thank you",
-            "thank you so much", "perfect", "awesome", "great", "ok", "okay",
-            "bye", "goodbye", "good day"
-        }
-        
-        if q in common_phrases:
-            return True
-            
-        greeting_patterns = [
-            r"^(hi|hello|hey|greetings|good\s+morning|good\s+afternoon|good\s+evening|howdy|yo)(\s+(there|buddy|friend|team|all))?$",
-            r"^how\s+are\s+you(\s+doing)?$",
-            r"^hows\s+it\s+going$",
-            r"^whats\s+up$",
-            r"^thank\s+you(\s+so\s+much)?$",
-            r"^thanks(\s+a\s+lot)?$",
-        ]
-        
-        for pattern in greeting_patterns:
-            if re.match(pattern, q):
-                return True
-                
-        return False
 
 
 if __name__ == "__main__":

@@ -65,4 +65,5 @@ export type IngestResponse = {
   pages_parsed: number
   chunks_created: number
   chunks_indexed: number
+  id?: string
 }

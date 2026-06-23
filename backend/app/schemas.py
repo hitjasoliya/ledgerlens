@@ -24,6 +24,8 @@ class IngestResponse(BaseModel):
     chunks_created: int
     chunks_indexed: int
     pages_failed: int = 0
+    id: str | None = None
+
 
 
 
@@ -58,4 +60,26 @@ class UserCreateRequest(BaseModel):
     username: str
     password: str
     role: str
+
+
+class DocumentResponse(BaseModel):
+    id: str
+    filename: str
+    source: str
+    uploaded_by_id: str
+    uploaded_by: str
+    uploaded_at: int
+    scope: str
+    access_list: list[str]
+    pages_parsed: int
+    chunks_created: int
+    chunks_indexed: int
+    is_persistent: bool
+    session_id: str | None
+
+
+
+class UpdateAccessRequest(BaseModel):
+    access_list: list[str]
+
 

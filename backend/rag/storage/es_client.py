@@ -266,6 +266,19 @@ class ESClient:
         except Exception as exc:
             raise RuntimeError(f"[ES] Failed to delete all session chunks: {exc}") from exc
 
+    def delete_document_chunks(self, filename: str) -> int:
+        body = {
+            "query": {
+                "term": {"metadata.source": filename}
+            }
+        }
+        try:
+            res = self.es.delete_by_query(index=self.index_name, body=body)
+            return res.get("deleted", 0)
+        except Exception as exc:
+            raise RuntimeError(f"[ES] Failed to delete document chunks: {exc}") from exc
+
+
 if __name__ == "__main__":
     client = ESClient()
     client.create_index_if_not_exists()
