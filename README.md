@@ -1,114 +1,159 @@
-# LedgerLens
+# 🔍 LedgerLens
 
-Enterprise RAG platform for financial documents. Upload PDFs (earnings releases, annual reports, board outcomes), ask questions in natural language, get cited answers grounded in your data.
+Enterprise RAG (Retrieval-Augmented Generation) platform for precise financial document analysis. LedgerLens allows you to upload complex PDFs (earnings releases, annual reports, financial statements), parse them preserving tabular layout and cell-merging structure, and query them in natural language with page-level citations grounded in the source data.
 
-> **Pipeline:** IBM Docling for layout-aware ingestion (tables with merged cells, charts, text). Hybrid search (dense + BM25) with RRF merge. Gemini for answer generation. JWT-based RBAC.
+Built with a dark terminal aesthetic and micro-animations, LedgerLens merges advanced document parsing, hybrid search indexing, and LLM reasoning to ensure zero hallucination and strict compliance with role-based document access.
 
 ---
 
-## Quick Start
+## 🏗️ Architecture Flow
 
+```
+   [ Upload PDF ]
+         │
+         ▼
+ ┌────────────────────────┐
+ │   IBM Docling Parser   │ ──► Layout analysis (Tables, Figures, Headings, Text)
+ └────────────────────────┘
+         │
+         ▼
+ ┌────────────────────────┐
+ │   Ollama Embeddings    │ ──► Batch embedding using 'embeddinggemma' (768d)
+ └────────────────────────┘
+         │
+         ▼
+ ┌────────────────────────┐
+ │     Elasticsearch      │ ──► Persistent vector store
+ └────────────────────────┘
+         │
+  [ Search Query ]
+         │
+         ▼
+ ┌────────────────────────┐
+ │     Hybrid Search      │ ──► (Dense Vector k-NN) + (Sparse BM25)
+ └────────────────────────┘
+         │
+         ▼
+ ┌────────────────────────┐
+ │    RRF Merge (K=60)    │ ──► Reciprocal Rank Fusion blending
+ └────────────────────────┘
+         │
+         ▼
+ ┌────────────────────────┐
+ │   Gemini Flash 1.5     │ ──► Generation with strict grounded constraints
+ └────────────────────────┘
+         │
+         ▼
+ ┌────────────────────────┐
+ │  Citation Parser & UI  │ ──► Highlights cited page bounding boxes in preview
+ └────────────────────────┘
+```
+
+---
+
+## ⚡ Core Features
+
+- **IBM Docling Parsing Ingestion**: Layout-aware parsing that converts complex financial tables (including merged cells and multi-level headers) directly to clean Markdown. Includes automatic figure caption matching and hierarchical heading injection.
+- **Hybrid Search with RRF**: Combines dense vector cosine similarity (via Ollama `embeddinggemma`) and sparse BM25 keyword matching, merged via a **Reciprocal Rank Fusion (RRF)** rank blending algorithm.
+- **Hierarchical Access Boundaries (RBAC)**: Supports roles (`admin` and `employee`), persistent document storage vs. session-ephemeral scopes, and document-level Access Control Lists (ACLs).
+- **Interactive Layout Inspector**: Administrators can upload any document to view layout region breakdowns (Tables, Text, Figures, Headers) projected over rendered PDF page canvas layouts.
+- **Stateful Answer Citation**: The generative engine validates LLM source indicators against retrieved document chunk scopes, returning page numbers mapped directly to vector source blocks.
+
+---
+
+## 🛠️ Environment Configurations
+
+Save your environment variables inside the backend configurations. Let's see [config.py](file:///Users/kuldeepsinh/Desktop/ledgerlens/backend/rag/utils/config.py) for structural defaults.
+
+| Variable | Default Value | Description |
+| :--- | :--- | :--- |
+| `GEMINI_API_KEY` | — | **Required.** Google AI Studio Gemini API Key |
+| `JWT_SECRET` | — | **Required.** Security signing key for JWT credentials |
+| `ES_HOST` | `http://localhost:9200` | Elasticsearch server address |
+| `ES_INDEX` | `rag_chunks` | Elasticsearch indexing target |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama local inference endpoint |
+| `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model utilized for vector generation |
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/ledgerlens` | PostgreSQL primary database connection string |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Login token validity duration |
+| `CHUNK_SIZE` | `500` | Sliding window token boundary size for text blocks |
+| `TOP_K` | `5` | Retrieved context chunk limit passed to generation model |
+
+---
+
+## 🚀 Quick Start
+
+### 1. Launch Databases
+Start Elasticsearch and PostgreSQL services via Docker:
 ```bash
-# 1. Databases
 docker compose up -d
+```
+Verify databases configuration in the [docker-compose.yml](file:///Users/kuldeepsinh/Desktop/ledgerlens/docker-compose.yml).
 
-# 2. Backend
+### 2. Configure Environment variables
+Duplicate `.env.example` in the backend directory and configure your keys:
+```bash
+cd backend
+cp .env.example .env
+# Edit .env and supply GEMINI_API_KEY and JWT_SECRET
+```
+
+### 3. Backend Setup
+Create your conda environment and install dependencies:
+```bash
 conda create -n ledgerlens python=3.11 -y
 conda activate ledgerlens
-cd backend
 pip install docling fastapi uvicorn python-dotenv pydantic sqlalchemy psycopg2-binary PyJWT bcrypt "elasticsearch>=8.0,<9.0" tiktoken python-multipart rich requests google-generativeai PyMuPDF
-cp .env.example .env   # add your GEMINI_API_KEY
 uvicorn app.main:app --port 8000
+```
 
-# 3. Frontend
-cd frontend
+### 4. Frontend Setup
+Install npm packages and launch the Vite development server:
+```bash
+cd ../frontend
 npm install
 npm run dev
 ```
 
-| Service | URL |
-|---------|-----|
-| Frontend | http://localhost:5173 |
-| Backend API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-| Elasticsearch | http://localhost:9200 |
-| Kibana | http://localhost:5601 |
-
-**Default login:** `admin` / `admin123`
-
----
-
-## Architecture
-
+### 5. Unified System Boot (Alternative)
+You can launch databases, check ports, check environment settings, check Ollama configurations, and run both servers concurrently using the provided launcher:
+```bash
+./run.sh
 ```
-PDF Upload → Docling DocumentConverter
-              ├── Tables (markdown, merged cells preserved)
-              ├── Charts/Figures (captions extracted)
-              ├── Text (reading order, headings, lists)
-              └── Chunking (token-bounded, type-aware)
-                    ↓
-              Ollama Embeddings (embeddinggemma, 768d)
-                    ↓
-              Elasticsearch (dense_vector + BM25)
-                    ↓
-User Query → Hybrid Search (kNN + BM25 → RRF merge)
-                    ↓
-              Gemini Flash → Cited Answer
-                    ↓
-              [Sources: p3, p7]
-```
+Review launcher details in [run.sh](file:///Users/kuldeepsinh/Desktop/ledgerlens/run.sh).
 
 ---
 
-## Features
+## 🧭 Service Mapping & Logins
 
-- **Docling ingestion** — IBM's document converter handles complex financial tables (merged cells, multi-level headers), reading order, and chart detection in a single pass
-- **Hybrid search** — dense vector (cosine similarity) + BM25 keyword matching with Reciprocal Rank Fusion
-- **Page-level citations** — every answer includes source page references verified against retrieved chunks
-- **RBAC** — admin/employee roles, persistent vs ephemeral documents, per-user access control lists
-- **Dark terminal theme** — JetBrains Mono, `#0a0e0f` background, `#00c896` accent
+| Service | Target URL |
+| :--- | :--- |
+| **Frontend UI** | [http://localhost:5173](http://localhost:5173) |
+| **Backend Swagger API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
+| **Elasticsearch Node** | [http://localhost:9200](http://localhost:9200) |
+| **Kibana UI Console** | [http://localhost:5601](http://localhost:5601) |
 
----
-
-## Environment Variables
-
-| Variable | Default | Description |
-|:---|:---|:---|
-| `GEMINI_API_KEY` | — | **Required.** Google Gemini API key |
-| `ES_HOST` | `http://localhost:9200` | Elasticsearch URL |
-| `ES_INDEX` | `rag_chunks` | Index name |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model for embeddings |
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/ledgerlens` | PostgreSQL connection |
-| `JWT_SECRET` | — | **Required.** JWT signing secret |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Token lifetime |
-| `CHUNK_SIZE` | `500` | Token limit per chunk |
-| `TOP_K` | `5` | Chunks retrieved per search |
+* **Default Administrator Login credentials**: `admin` / `admin123`
 
 ---
 
-## API Endpoints
+## 📡 API Endpoint Registry
 
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| `GET` | `/health` | None | Health check |
-| `POST` | `/api/auth/login` | None | JWT login |
-| `GET` | `/api/auth/me` | User | Current user profile |
-| `GET` | `/api/users` | Admin | List users |
-| `POST` | `/api/users` | Admin | Create user |
-| `DELETE` | `/api/users/{id}` | Admin | Delete user |
-| `POST` | `/api/ingest` | User | Upload PDF for ingestion |
-| `POST` | `/api/chat` | User | RAG chat |
-| `POST` | `/api/chat/clear` | User | Clear session history |
-| `POST` | `/api/session/end` | User | End session, purge ephemeral chunks |
-| `GET` | `/api/cache/{file}` | User | Serve cached page images |
-| `POST` | `/api/admin/layout-preview` | Admin | Preview PDF layout regions |
+All routes require authentication headers containing a Bearer token except authentication endpoints.
 
----
+### Authentication & Users
+- `POST` `/api/auth/login`: Authenticate credentials, return JWT and user metadata.
+- `GET` `/api/auth/me`: Get active profile payload data.
+- `GET`/`POST`/`DELETE` `/api/users`: Manage user registries (Admin authorization required).
 
-## Prerequisites
+### Document Ingestion & Storage
+- `POST` `/api/ingest`: Receive PDF files, extract chunks, compute embeddings, and insert data.
+- `GET` `/api/documents`: List uploaded database files scoped to authorization permissions.
+- `PUT` `/api/documents/{id}/access`: Update access lists (ACL) for persistent files.
+- `DELETE` `/api/documents/{id}`: Delete PostgreSQL document logs and Elasticsearch index references.
 
-- **Docker** — Elasticsearch 8.14 + PostgreSQL 15
-- **Ollama** — running locally with `embeddinggemma` model
-- **Gemini API key** — from Google AI Studio
-- **Python 3.11** + **Node.js 18+**
+### Chat & Search
+- `POST` `/api/chat`: Run vector searches, rank contexts using RRF, generate cited response blocks.
+- `POST` `/api/chat/clear`: Clear current chat history context flags.
+- `POST` `/api/session/end`: Wipe ephemeral documents and clear history tracking logs.
+- `POST` `/api/admin/layout-preview`: Extract structural page elements for layout preview canvases (Admin only).
+
