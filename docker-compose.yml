@@ -1,56 +1,139 @@
-version: "3.8"
+version: '3.8'
 
 services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.14.0
-    container_name: rag_elasticsearch
-    environment:
-      - discovery.type=single-node
-      # For production: enable security and set passwords
-      # - xpack.security.enabled=true
-      # - xpack.security.authc.api_key.enabled=true
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
-    ports:
-      - "9200:9200"
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.14.0
-    container_name: rag_kibana
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-    ports:
-      - "5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-
   postgres:
-    image: postgres:15-alpine
-    container_name: rag_postgres
+    image: postgres:16-alpine
+    container_name: ledgerlens-postgres
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=ledgerlens
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: ledgerlens
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ledgerlens"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ledgerlens-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
+    container_name: ledgerlens-elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -f http://localhost:9200/_cat/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  identity:
+    build:
+      context: .
+      dockerfile: services/identity/Dockerfile
+    container_name: ledgerlens-identity
+    environment:
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ingestion:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: ledgerlens-ingestion
+    environment:
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      REDIS_URL: redis://redis:6379/0
+      ES_HOST: http://elasticsearch:9200
+      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  rag:
+    build:
+      context: .
+      dockerfile: services/rag/Dockerfile
+    container_name: ledgerlens-rag
+    environment:
+      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      REDIS_URL: redis://redis:6379/0
+      ES_HOST: http://elasticsearch:9200
+      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: ledgerlens-gateway
+    environment:
+      IDENTITY_SERVICE_URL: http://identity:8001
+      INGESTION_SERVICE_URL: http://ingestion:8002
+      RAG_SERVICE_URL: http://rag:8003
+      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+    ports:
+      - "8000:8000"
+    depends_on:
+      - identity
+      - ingestion
+      - rag
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: ledgerlens-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - gateway
+
 volumes:
-  esdata:
-    driver: local
-  pgdata:
-    driver: local
+  postgres_data:
+  redis_data:
+  es_data:

@@ -62,6 +62,19 @@ export function FileTable({
               <span className="file-table__chunks">
                 {file.chunksIndexed} chunks · {file.scope === 'admin' ? 'shared' : 'personal'}
               </span>
+              {(file.indexStatus === 'pending' || file.indexStatus === 'processing') && (
+                <Badge tone="accent">Indexing…</Badge>
+              )}
+              {file.indexStatus === 'failed' && (
+                <Badge tone="danger" >
+                  Failed
+                </Badge>
+              )}
+              {file.indexStatus === 'failed' && file.jobError && (
+                <span className="file-table__error" title={file.jobError}>
+                  {file.jobError.slice(0, 60)}
+                </span>
+              )}
             </div>
           </div>
 

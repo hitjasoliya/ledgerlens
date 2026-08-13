@@ -4,7 +4,7 @@ import { Button } from '../ui/Button'
 import { UploadIcon, FileIcon, CloseIcon } from '../ui/Icon'
 import type { SafeUser } from '../../types'
 import { ingestPdf } from '../../lib/api'
-import { createFile } from '../../services/fileService'
+import { createFile, pollJobUntilDone } from '../../services/fileService'
 import './FileUploadDialog.css'
 
 type Props = {
@@ -66,6 +66,7 @@ export function FileUploadDialog({ open, onClose, uploader, employees }: Props) 
         file,
         userId: uploader.id,
         sessionId: `admin_persistent_${uploader.id}`,
+        scope: 'admin',
         isPersistent: true,
         allowedUsers: accessIds,
       })
@@ -82,6 +83,9 @@ export function FileUploadDialog({ open, onClose, uploader, employees }: Props) 
         isPersistent: true,
         sessionId: `admin_persistent_${uploader.id}`,
       })
+      if (result.job_id) {
+        void pollJobUntilDone(result.job_id)
+      }
       reset()
       onClose()
     } catch (err) {

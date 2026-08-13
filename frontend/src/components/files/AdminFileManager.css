@@ -27,6 +27,12 @@
   margin-top: 4px;
 }
 
+.admin-files__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 @media (max-width: 720px) {
   .admin-files {
     padding: 20px 16px;

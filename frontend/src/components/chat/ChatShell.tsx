@@ -4,7 +4,7 @@ import { ChatSidebar } from './ChatSidebar'
 import { ChatWindow } from './ChatWindow'
 import { useChat } from './useChat'
 import { ingestPdf } from '../../lib/api'
-import { createFile } from '../../services/fileService'
+import { createFile, pollJobUntilDone } from '../../services/fileService'
 import { writeSessionJSON, StorageKeys, readSessionJSON } from '../../lib/storage'
 import './ChatShell.css'
 
@@ -42,6 +42,7 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
             file,
             userId: user.id,
             sessionId: chat.activeSession.id,
+            scope: fileScope,
             isPersistent: fileScope === 'employee' ? true : false,
             allowedUsers: fileScope === 'employee' ? [user.id] : [],
           })
@@ -61,6 +62,9 @@ export function ChatShell({ user, accessibleFiles, allowFileAttach, fileScope }:
               sessionId: chat.activeSession.id,
               id: result.id,
             })
+            if (result.job_id) {
+              void pollJobUntilDone(result.job_id)
+            }
           } else {
             const key = StorageKeys.sessionFiles(chat.activeSession.id)
             const existing = readSessionJSON<EphemeralFileMeta[]>(key, [])

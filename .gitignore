@@ -1,6 +1,21 @@
 .env
-backend/data/cache/
-backend/static/figures/
+*.db
+data/cache/
+static/figures/
 .claude
 .DS_Store
 .DS_store
+node_modules/
+dist/
+__pycache__/
+
+# Agent skills, locks, and temporary agent files
+.agents/
+skills-lock.json
+
+# Secondary & extra markdown/README files
+**/README*.md
+!/README.md
+
+# Uploaded user documents
+/data/uploads/

@@ -46,22 +46,19 @@ export async function sendMessage(
   return (await res.json()) as ChatResponse
 }
 
-export async function clearConversation(): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/chat/clear`, { 
-    method: 'POST',
-    headers: { ...getAuthHeader() }
-  })
+export async function clearConversation(sessionId = 'default_session'): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/chat/clear?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'POST', headers: { ...getAuthHeader() } },
+  )
   if (!res.ok) throw new Error(await parseError(res))
 }
 
 export async function deleteConversation(sessionId: string): Promise<void> {
-  const form = new FormData()
-  form.append('session_id', sessionId)
-  const res = await fetch(`${API_BASE}/api/chat/delete`, { 
-    method: 'POST',
-    headers: { ...getAuthHeader() },
-    body: form
-  })
+  const res = await fetch(
+    `${API_BASE}/api/chat/delete?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'POST', headers: { ...getAuthHeader() } },
+  )
   if (!res.ok) throw new Error(await parseError(res))
 }
 
@@ -71,6 +68,7 @@ export type IngestOptions = {
   sessionId: string
   isPersistent: boolean
   allowedUsers: string[]
+  scope?: 'admin' | 'employee'
 }
 
 export async function ingestPdf(opts: IngestOptions): Promise<IngestResponse> {
@@ -78,6 +76,7 @@ export async function ingestPdf(opts: IngestOptions): Promise<IngestResponse> {
   form.append('file', opts.file)
   form.append('user_id', opts.userId)
   form.append('session_id', opts.sessionId)
+  form.append('scope', opts.scope ?? 'employee')
   form.append('is_persistent', opts.isPersistent ? 'true' : 'false')
   form.append('allowed_users', opts.allowedUsers.join(','))
 
@@ -90,14 +89,29 @@ export async function ingestPdf(opts: IngestOptions): Promise<IngestResponse> {
   return (await res.json()) as IngestResponse
 }
 
-export async function endSession(sessionId: string): Promise<void> {
-  const form = new FormData()
-  form.append('session_id', sessionId)
-  const res = await fetch(`${API_BASE}/api/session/end`, {
-    method: 'POST',
+export type JobStatus = {
+  job_id: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  error_message?: string
+  pages_parsed: number
+  chunks_created: number
+  chunks_indexed: number
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  const res = await fetch(`${API_BASE}/api/ingest/jobs/${jobId}`, {
+    method: 'GET',
     headers: { ...getAuthHeader() },
-    body: form,
   })
+  if (!res.ok) throw new Error(await parseError(res))
+  return (await res.json()) as JobStatus
+}
+
+export async function endSession(sessionId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/session/end?session_id=${encodeURIComponent(sessionId)}`,
+    { method: 'POST', headers: { ...getAuthHeader() } },
+  )
   if (!res.ok) throw new Error(await parseError(res))
 }
 
@@ -123,6 +137,17 @@ export async function loginUser(
   })
   if (!res.ok) throw new Error(await parseError(res))
   return (await res.json()) as { access_token: string; user: any }
+}
+
+export async function logoutUser(): Promise<void> {
+  try {
+    await fetch(`${API_BASE}/api/auth/logout`, {
+      method: 'POST',
+      headers: { ...getAuthHeader() },
+    })
+  } catch {
+    // ignore network errors on logout
+  }
 }
 
 export async function getProfile(): Promise<any> {
@@ -164,17 +189,6 @@ export async function removeUser(userId: string): Promise<void> {
   if (!res.ok) throw new Error(await parseError(res))
 }
 
-export async function previewLayout(file: File): Promise<any> {
-  const form = new FormData()
-  form.append('file', file)
-  const res = await fetch(`${API_BASE}/api/admin/layout-preview`, {
-    method: 'POST',
-    headers: { ...getAuthHeader() },
-    body: form,
-  })
-  if (!res.ok) throw new Error(await parseError(res))
-  return await res.json()
-}
 
 export async function fetchDocuments(): Promise<any[]> {
   const res = await fetch(`${API_BASE}/api/documents`, {
@@ -206,3 +220,15 @@ export async function removeDocument(id: string): Promise<void> {
   if (!res.ok) throw new Error(await parseError(res))
 }
 
+export async function clearAllEmbeddings(): Promise<{
+  ok: boolean
+  deleted: number
+  files_deleted: number
+}> {
+  const res = await fetch(`${API_BASE}/api/embeddings`, {
+    method: 'DELETE',
+    headers: { ...getAuthHeader() },
+  })
+  if (!res.ok) throw new Error(await parseError(res))
+  return (await res.json()) as { ok: boolean; deleted: number; files_deleted: number }
+}

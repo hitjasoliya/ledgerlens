@@ -1,52 +1,44 @@
 # 🔍 LedgerLens
 
-Enterprise RAG (Retrieval-Augmented Generation) platform for precise financial document analysis. LedgerLens allows you to upload complex financial PDFs (earnings releases, annual reports, financial statements), parse them while preserving tabular layout and cell-merging structure, and query them in natural language with page-level citations grounded in source data.
+Enterprise RAG (Retrieval-Augmented Generation) platform for precise financial document analysis. LedgerLens enables users to upload complex financial PDFs (earnings releases, annual reports, financial statements), parse them while preserving tabular layout and cell-merging structure, and query them in natural language with verifiable page-level citations grounded in source data.
 
-Built with a dark terminal aesthetic and micro-animations, LedgerLens merges advanced document parsing, hybrid search indexing, and LLM reasoning to ensure zero hallucination and strict compliance with role-based document access.
+Built with a dark terminal aesthetic, LedgerLens employs a production-grade microservices architecture, advanced layout-aware parsing, hybrid vector/keyword search with Reciprocal Rank Fusion, and LLM generation with strict role-based document access control.
 
 ---
 
-## 🏗️ Architecture Flow
+## 🏗️ Architecture Flow & Services Overview
 
 ```
-   [ Upload PDF ]
-         │
-         ▼
- ┌────────────────────────┐
- │   IBM Docling Parser   │ ──► Layout analysis (Tables, Figures, Headings, Text)
- └────────────────────────┘
-         │
-         ▼
- ┌────────────────────────┐
- │   Ollama Embeddings    │ ──► Batch embedding using 'embeddinggemma' (768d)
- └────────────────────────┘
-         │
-         ▼
- ┌────────────────────────┐
- │     Elasticsearch      │ ──► Persistent & session vector/sparse index
- └────────────────────────┘
-         │
-  [ Search Query ]
-         │
-         ▼
- ┌────────────────────────┐
- │     Hybrid Search      │ ──► (Dense Vector k-NN) + (Sparse BM25)
- └────────────────────────┘
-         │
-         ▼
- ┌────────────────────────┐
- │    RRF Merge (K=60)    │ ──► Reciprocal Rank Fusion rank blending
- └────────────────────────┘
-         │
-         ▼
- ┌────────────────────────┐
- │    Google Gemini API   │ ──► Generation with strict grounded constraints
- └────────────────────────┘
-         │
-         ▼
- ┌────────────────────────┐
- │  Citation Parser & UI  │ ──► Highlights cited page bounding boxes in preview
- └────────────────────────┘
+                                    ┌──────────────────────┐
+                                    │  React TypeScript UI │
+                                    │     (Port 5173)      │
+                                    └──────────┬───────────┘
+                                               │ HTTP / REST
+                                               ▼
+                                    ┌──────────────────────┐
+                                    │  FastAPI API Gateway │
+                                    │     (Port 8000)      │
+                                    └──────────┬───────────┘
+                                               │
+               ┌───────────────────────────────┼───────────────────────────────┐
+               │ Forward                       │ Forward                       │ Forward
+               ▼                               ▼                               ▼
+    ┌────────────────────┐          ┌────────────────────┐          ┌────────────────────┐
+    │  Identity Service  │          │ Ingestion Service  │          │ RAG Engine Service │
+    │    (Port 8001)     │          │    (Port 8002)     │          │    (Port 8003)     │
+    └──────────┬─────────┘          └──────────┬─────────┘          └──────────┬─────────┘
+               │                               │                               │
+               ▼                               ▼                               ▼
+    ┌────────────────────┐          ┌────────────────────┐          ┌────────────────────┐
+    │  PostgreSQL + Redis│          │    IBM Docling     │          │   Elasticsearch    │
+    │  (Users & Tokens)  │          │  Parser + Ollama   │          │ (Hybrid kNN + BM25)│
+    └────────────────────┘          └────────────────────┘          └────────────────────┘
+                                                                               │
+                                                                               ▼
+                                                                    ┌────────────────────┐
+                                                                    │ Google Gemini 2.5  │
+                                                                    │ Grounded Generator │
+                                                                    └────────────────────┘
 ```
 
 ---
@@ -55,43 +47,47 @@ Built with a dark terminal aesthetic and micro-animations, LedgerLens merges adv
 
 ```
 ledgerlens/
-├── backend/
-│   ├── app/                     # FastAPI Application Layer
-│   │   ├── main.py              # Application entry point & API endpoints
-│   │   ├── auth.py              # JWT authentication & password hashing
-│   │   ├── database.py          # SQLAlchemy DB session setup
-│   │   ├── models.py            # User and Document DB schemas
-│   │   └── schemas.py           # Pydantic request/response schemas
-│   ├── rag/                     # RAG Core Engine
-│   │   ├── ingestion/           # IBM Docling parsing & chunking pipeline
-│   │   ├── intelligence/        # Ollama embedder & Gemini generator
-│   │   ├── orchestrator/        # RAG Engine, query routing, citation parsing
-│   │   ├── storage/             # Elasticsearch hybrid search client
-│   │   └── utils/               # Configuration settings & helper utilities
-│   ├── requirements.txt         # Python dependencies
-│   └── .env.example             # Backend environment template
-├── frontend/
-│   ├── src/                     # React + TypeScript source code
-│   │   ├── auth/                # AuthContext & ProtectedRoute components
-│   │   ├── components/          # Reusable UI, Chat, File & Admin components
-│   │   ├── pages/               # Landing, Login, Admin & Employee dashboards
-│   │   ├── services/            # API service calls (chat, files, users)
-│   │   └── types/               # TypeScript interface definitions
-│   ├── package.json             # Frontend dependencies & Vite scripts
-│   └── vite.config.ts           # Vite configuration
-├── docker-compose.yml           # Docker services (PostgreSQL, Elasticsearch, Kibana)
-└── run.sh                       # Unified single-command system launcher
+├── services/                     # Microservices Architecture
+│   ├── identity/                 # Auth, User Management, JWT & Redis Revocation (Port 8001)
+│   ├── ingestion/                # PDF layout parsing (Docling), chunking & embedding (Port 8002)
+│   ├── rag/                      # Hybrid search, RRF rank blending, Gemini generator (Port 8003)
+│   └── gateway/                  # API Gateway, reverse proxy, JWT auth injection (Port 8000)
+├── packages/common/src/common/   # Shared domain models, Pydantic schemas, database & search
+├── frontend/                     # React + TypeScript + Vite workspace (Port 5173)
+├── sample_pdfs/                  # Sample financial reports for testing
+├── docker-compose.yml            # Containerized PostgreSQL 16, Redis 7, Elasticsearch 8.12
+├── requirements.txt              # Shared Python dependencies
+├── .env.example                  # Environment configuration template
+└── run.sh                        # Unified single-command launcher for all microservices
 ```
 
 ---
 
 ## ⚡ Core Features
 
-- **IBM Docling Parsing Ingestion**: Layout-aware parsing that converts complex financial tables (including merged cells and multi-level headers) directly to clean Markdown. Includes automatic figure caption matching and hierarchical section heading context injection.
-- **Hybrid Search with RRF**: Combines dense vector cosine similarity (via Ollama `embeddinggemma`, 768d) and sparse BM25 keyword matching, merged via a **Reciprocal Rank Fusion (RRF)** rank blending algorithm ($K=60$).
-- **Hierarchical Access Control (RBAC)**: Supports roles (`admin` and `employee`), persistent document storage vs. session-ephemeral scopes, and document-level Access Control Lists (ACLs).
-- **Interactive Layout Inspector**: Administrators can upload any document to view layout region breakdowns (Tables, Text, Figures, Headers) projected over rendered PDF page canvas layouts.
-- **Stateful Answer Citation**: The generative engine validates LLM source indicators against retrieved document chunk scopes, returning page numbers mapped directly to vector source blocks (`[pX_cY]`).
+- **IBM Docling Ingestion Pipeline**: Layout-aware document parsing converting complex financial tables (including merged cells and multi-level headers) directly into clean Markdown, preserving table geometry and section hierarchy.
+- **Hybrid Search with RRF**: Combines dense vector cosine similarity (via Ollama `embeddinggemma`, 768d) and sparse BM25 keyword search in Elasticsearch, blended using **Reciprocal Rank Fusion (RRF)** ($K=60$).
+- **Microservices Architecture**: Decoupled domain services (Identity, Ingestion, RAG Engine, API Gateway) for non-blocking parallel processing, horizontal scaling, and isolated context boundaries.
+- **Role-Based Access Control (RBAC)**: Support for `admin` and `employee` roles, persistent file storage vs. session-ephemeral scopes, and strict document Access Control Lists (ACLs) enforced inside the vector retrieval layer.
+- **Instant Token Revocation**: Redis-backed blocklist storing invalidated JWT signatures upon logout or credential changes for immediate session termination.
+- **Grounded Citation Generation**: Uses Google Gemini LLM with low-temperature constraints and strict prompt engineering to generate answers mapped directly to source page numbers (`[pX_cY]`).
+
+---
+
+## 🧭 Service Mapping & Default Credentials
+
+| Service / Layer | URL Endpoint | Port | Description |
+| :--- | :--- | :---: | :--- |
+| **Frontend Workspace** | [http://localhost:5173](http://localhost:5173) | `5173` | React + Vite dark terminal interface |
+| **API Gateway** | [http://localhost:8000](http://localhost:8000) | `8000` | Central Reverse Proxy & Swagger Docs (`/docs`) |
+| **Identity Service** | [http://localhost:8001](http://localhost:8001) | `8001` | Authentication & User Management API |
+| **Ingestion Service** | [http://localhost:8002](http://localhost:8002) | `8002` | Async PDF Layout Parsing & Vector Ingestion |
+| **RAG Engine Service** | [http://localhost:8003](http://localhost:8003) | `8003` | Retrieval, Hybrid Search & Gemini Generation |
+| **Elasticsearch Node** | [http://localhost:9200](http://localhost:9200) | `9200` | Vector & Keyword Search Engine |
+| **PostgreSQL DB** | `localhost:5432` | `5432` | Relational Metadata & Chat History Storage |
+| **Redis Cache** | `localhost:6379` | `6379` | Token Revocation & Job Status Queue |
+
+* **Default Administrator Credentials**: `admin` / `admin123`
 
 ---
 
@@ -99,32 +95,31 @@ ledgerlens/
 
 | Feature / Capability | Admin Role | Employee Role |
 | :--- | :---: | :---: |
-| Authenticate & Access Chat Interface | ✅ | ✅ |
+| Authenticate & Access Chat Workspace | ✅ | ✅ |
 | Upload Ephemeral (Session) Documents | ✅ | ✅ |
 | Upload Persistent Documents | ✅ | ✅ |
 | View All Persistent Documents | ✅ | 🔒 (Scope / ACL limited) |
 | Manage User Registry (Create / Delete Users) | ✅ | ❌ |
-| Update Document Access Lists (ACLs) | ✅ | ❌ |
-| Access Interactive PDF Layout Inspector | ✅ | ❌ |
+| Update Document Access Control Lists (ACLs) | ✅ | ❌ |
+| Wipe Entire Document Index & Cache | ✅ | ❌ |
 
 ---
 
 ## 🛠️ Environment Configurations
 
-Configure your environment variables in `backend/.env`. Refer to [config.py](backend/rag/utils/config.py) for structural defaults.
+Create a `.env` file at the root level using `.env.example` as a reference. Configuration defaults are maintained in [packages/common/src/common/config.py](packages/common/src/common/config.py).
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
 | `GEMINI_API_KEY` | — | **Required.** Google AI Studio Gemini API Key |
-| `JWT_SECRET` | — | **Required.** Security signing key for JWT credentials |
-| `ES_HOST` | `http://localhost:9200` | Elasticsearch server address |
-| `ES_INDEX` | `rag_chunks` | Elasticsearch indexing target |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama local inference endpoint |
-| `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model utilized for vector generation |
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/ledgerlens` | PostgreSQL primary database connection string |
-| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `60` | Login token validity duration |
-| `CHUNK_SIZE` | `500` | Sliding window token boundary size for text blocks |
-| `TOP_K` | `5` | Retrieved context chunk limit passed to generation model |
+| `JWT_SECRET` | — | **Required.** Signing key for JWT authentication |
+| `GENERATION_MODEL` | `gemini-2.5-flash` | Gemini model used for grounded chat generation |
+| `DATABASE_URL` | `postgresql://postgres:postgrespassword@localhost:5432/ledgerlens` | Primary relational database URL |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis instance for blocklist & task state |
+| `ES_HOST` | `http://localhost:9200` | Elasticsearch server endpoint |
+| `ES_INDEX` | `ledgerlens_chunks` | Elasticsearch target index name |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama service address for vector embeddings |
+| `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model utilized for dense embeddings |
 
 ---
 
@@ -134,86 +129,88 @@ Configure your environment variables in `backend/.env`. Refer to [config.py](bac
 - [Docker & Docker Desktop](https://www.docker.com/)
 - Python 3.11+
 - Node.js 18+ & npm
-- [Ollama](https://ollama.com/) (running locally with `embeddinggemma` model pulled)
+- [Ollama](https://ollama.com/) (Optional: for local vector embeddings)
 
 ```bash
+# Pull vector embedding model if using Ollama
 ollama pull embeddinggemma
 ```
 
-### 1. Launch Databases
-Start Elasticsearch and PostgreSQL services via Docker:
+### 1. Configure Environment
+Create `.env` at root level from the template and set your `GEMINI_API_KEY`:
 ```bash
-docker compose up -d
-```
-Verify database configurations in [docker-compose.yml](docker-compose.yml).
-
-### 2. Configure Environment Variables
-Duplicate `.env.example` inside the backend directory and configure your credentials:
-```bash
-cd backend
 cp .env.example .env
-# Edit .env and supply GEMINI_API_KEY and JWT_SECRET
+# Edit .env and supply your GEMINI_API_KEY
 ```
 
-### 3. Backend Setup
-Create your Python environment and install dependencies:
+### 2. Unified System Boot (Recommended)
+The single-command launcher starts database services, verifies ports, and runs all microservices and frontend concurrently:
 ```bash
-conda create -n ledgerlens python=3.11 -y
-conda activate ledgerlens
+chmod +x run.sh
+./run.sh
+```
+
+### 3. Manual / Step-by-Step Setup
+
+#### A. Launch Database Stack
+```bash
+docker compose up -d postgres redis elasticsearch
+```
+
+#### B. Install Python Dependencies
+```bash
 pip install -r requirements.txt
-uvicorn app.main:app --port 8000
+export PYTHONPATH="$(pwd)/packages/common/src:$(pwd)"
 ```
 
-### 4. Frontend Setup
-Install npm packages and launch the Vite development server:
+#### C. Launch Microservices
+Run each service in separate terminal windows:
 ```bash
-cd ../frontend
+# 1. Identity Service
+uvicorn services.identity.main:app --port 8001
+
+# 2. Ingestion Service
+uvicorn services.ingestion.main:app --port 8002
+
+# 3. RAG Engine Service
+uvicorn services.rag.main:app --port 8003
+
+# 4. API Gateway
+uvicorn services.gateway.main:app --port 8000
+```
+
+#### D. Launch Frontend Workspace
+```bash
+cd frontend
 npm install
 npm run dev
 ```
-
-### 5. Unified System Boot (Alternative)
-You can launch databases, check port availability, check environment settings, verify Ollama configurations, and run both backend and frontend servers concurrently using the unified runner script:
-```bash
-./run.sh
-```
-Review launcher details in [run.sh](run.sh).
-
----
-
-## 🧭 Service Mapping & Default Logins
-
-| Service | Target URL |
-| :--- | :--- |
-| **Frontend UI** | [http://localhost:5173](http://localhost:5173) |
-| **Backend Swagger API Docs** | [http://localhost:8000/docs](http://localhost:8000/docs) |
-| **Elasticsearch Node** | [http://localhost:9200](http://localhost:9200) |
-| **Kibana UI Console** | [http://localhost:5601](http://localhost:5601) |
-
-* **Default Administrator Credentials**: Username `admin` / Password `admin123`
 
 ---
 
 ## 📡 API Endpoint Registry
 
-All endpoints require authentication headers containing a `Bearer <token>` except authentication login endpoints.
+All routes require authentication headers containing a `Bearer <token>` except authentication endpoints (`/api/auth/login`).
 
-### Authentication & User Management
-- `POST` `/api/auth/login`: Authenticate credentials, return JWT access token and user metadata.
-- `GET` `/api/auth/me`: Fetch active user profile payload data.
-- `GET` `/api/users`: List registered users (Admin authorization required).
-- `POST` `/api/users`: Register a new user profile (Admin authorization required).
-- `DELETE` `/api/users/{user_id}`: Remove user account (Admin authorization required).
+### Authentication & Users
+- `POST` `/api/auth/login`: Authenticate credentials, return JWT and profile details.
+- `GET` `/api/auth/me`: Fetch active user profile metadata.
+- `GET` `/api/users`: List registered users (Admin only).
+- `POST` `/api/users`: Create a new user profile (Admin only).
+- `DELETE` `/api/users/{user_id}`: Delete user account (Admin only).
 
 ### Document Ingestion & Storage
-- `POST` `/api/ingest`: Upload PDF file, parse layout with Docling, generate vector embeddings, and store chunks.
-- `GET` `/api/documents`: List uploaded documents scoped to current user permissions and ACLs.
-- `PUT` `/api/documents/{id}/access`: Update access control list (ACL) for persistent documents (Admin only).
-- `DELETE` `/api/documents/{id}`: Delete PostgreSQL document record and associated Elasticsearch vector chunks.
+- `POST` `/api/ingest`: Receive PDF files, extract chunks, compute embeddings, insert data.
+- `GET` `/api/documents`: List uploaded files filtered by RBAC and ACL permissions.
+- `GET` `/api/ingest/jobs/{job_id}`: Poll background ingestion job status (`pending` / `processing` / `completed` / `failed`).
+- `PUT` `/api/documents/{id}/access`: Update Access Control List (ACL) permissions (Admin only).
+- `DELETE` `/api/documents/{id}`: Remove document record, PDF binary, and vector chunks.
+- `DELETE` `/api/embeddings`: Wipe total document store, vector chunks, and uploads.
 
-### Chat & Intelligence
-- `POST` `/api/chat`: Run hybrid search (k-NN + BM25 with RRF), generate cited answer via Gemini API.
-- `POST` `/api/chat/clear`: Reset chat conversation context history for the active session.
-- `POST` `/api/session/end`: Purge session-ephemeral documents and clear chat context tracking logs.
-- `POST` `/api/admin/layout-preview`: Extract structural page elements for interactive layout preview canvas (Admin only).
-
+### Chat & Search Engine
+- `POST` `/api/chat`: Execute RRF hybrid search and generate grounded response with page citations.
+- `GET`/`POST` `/api/chat/sessions`: List or create chat session threads.
+- `GET` `/api/chat/sessions/{id}`: Fetch session history and message timeline.
+- `POST` `/api/chat/clear`: Reset chat history for a session.
+- `POST` `/api/chat/delete`: Remove session thread and associated messages.
+- `POST` `/api/session/end`: Purge session-ephemeral files and reset chat state.

@@ -1,5 +1,11 @@
 import type { FileEntry } from '../types'
-import { fetchDocuments, removeDocument, updateDocumentAccess } from '../lib/api'
+import {
+  clearAllEmbeddings as apiClearAllEmbeddings,
+  fetchDocuments,
+  getJobStatus,
+  removeDocument,
+  updateDocumentAccess,
+} from '../lib/api'
 import { bus, Topics } from '../lib/eventBus'
 
 function mapDocument(doc: any): FileEntry {
@@ -17,6 +23,8 @@ function mapDocument(doc: any): FileEntry {
     chunksIndexed: doc.chunks_indexed,
     isPersistent: doc.is_persistent,
     sessionId: doc.session_id,
+    indexStatus: doc.index_status,
+    jobError: doc.job_error,
   }
 }
 
@@ -93,4 +101,43 @@ export async function deleteFile(id: string): Promise<void> {
   } catch (e) {
     console.error('Failed to delete file', e)
   }
+}
+
+export async function clearAllEmbeddings(): Promise<{
+  deleted: number
+  filesDeleted: number
+}> {
+  const res = await apiClearAllEmbeddings()
+  bus.emit(Topics.files)
+  return { deleted: res.deleted, filesDeleted: res.files_deleted }
+}
+
+export async function pollJobUntilDone(
+  jobId: string,
+  timeoutMs = 5 * 60 * 1000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  let status = 'pending'
+  while (Date.now() < deadline) {
+    try {
+      const job = await getJobStatus(jobId)
+      status = job.status
+      if (status === 'completed' || status === 'failed') {
+        bus.emit(Topics.files)
+        return status
+      }
+    } catch {
+      // Job may have been wiped (e.g. "Clear embeddings") while polling; stop quietly.
+      bus.emit(Topics.files)
+      return status
+    }
+    const delay = (ms: number): Promise<void> => {
+      const { promise, resolve } = Promise.withResolvers<void>()
+      setTimeout(resolve, ms)
+      return promise
+    }
+    await delay(2000)
+  }
+  bus.emit(Topics.files)
+  return status
 }

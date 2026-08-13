@@ -27,6 +27,8 @@ export type FileEntry = {
   chunksIndexed: number
   isPersistent: boolean
   sessionId: string
+  indexStatus?: 'pending' | 'processing' | 'completed' | 'failed' | 'unknown'
+  jobError?: string
 }
 
 export type Citation = {
@@ -66,4 +68,5 @@ export type IngestResponse = {
   chunks_created: number
   chunks_indexed: number
   id?: string
+  job_id?: string
 }

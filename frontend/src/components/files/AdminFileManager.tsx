@@ -5,7 +5,7 @@ import { PlusIcon } from '../ui/Icon'
 import { FileTable } from './FileTable'
 import { FileUploadDialog } from './FileUploadDialog'
 import { AccessManagerDialog } from './AccessManagerDialog'
-import { deleteFile } from '../../services/fileService'
+import { clearAllEmbeddings, deleteFile } from '../../services/fileService'
 import { useAdminFiles, useEmployees } from '../../services/hooks'
 import './AdminFileManager.css'
 
@@ -18,10 +18,24 @@ export function AdminFileManager({ uploader }: Props) {
   const employees = useEmployees()
   const [uploadOpen, setUploadOpen] = useState(false)
   const [accessTarget, setAccessTarget] = useState<FileEntry | null>(null)
+  const [clearing, setClearing] = useState(false)
 
   const handleDelete = (file: FileEntry) => {
-    if (!confirm(`Delete "${file.filename}" from the library? Indexed chunks remain in the backend.`)) return
+    if (!confirm(`Delete "${file.filename}" from the library? This also removes its indexed chunks from the backend.`)) return
     deleteFile(file.id)
+  }
+
+  const handleClearEmbeddings = async () => {
+    if (!confirm('This permanently deletes ALL indexed chunks, uploaded PDF files, and document records from the backend. This cannot be undone. Continue?')) return
+    setClearing(true)
+    try {
+      const { deleted, filesDeleted } = await clearAllEmbeddings()
+      alert(`Cleared ${deleted} chunk(s) and deleted ${filesDeleted} file(s).`)
+    } catch (err) {
+      alert(`Failed to clear embeddings: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setClearing(false)
+    }
   }
 
   return (
@@ -33,13 +47,22 @@ export function AdminFileManager({ uploader }: Props) {
             Upload PDFs, then choose which employees can query them in chat.
           </p>
         </div>
-        <Button
-          variant="primary"
-          leftIcon={<PlusIcon size={14} />}
-          onClick={() => setUploadOpen(true)}
-        >
-          Upload PDF
-        </Button>
+        <div className="admin-files__actions">
+          <Button
+            variant="danger"
+            onClick={handleClearEmbeddings}
+            disabled={clearing || files.length === 0}
+          >
+            {clearing ? 'Clearing…' : 'Clear embeddings'}
+          </Button>
+          <Button
+            variant="primary"
+            leftIcon={<PlusIcon size={14} />}
+            onClick={() => setUploadOpen(true)}
+          >
+            Upload PDF
+          </Button>
+        </div>
       </header>
 
       <FileTable
