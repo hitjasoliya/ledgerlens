@@ -1,0 +1,24 @@
+{
+  "dataset_name": "synthetic_deterministic_financial_evaluation",
+  "description": "Deterministic multi-page financial documents with conflicting values on same page, explicit table units/period headers, and known figures for grounded evaluation.",
+  "documents": [
+    {
+      "filename": "alpha_fy2024_audited_report.pdf",
+      "path": "/Users/hit/Documents/projects/ledgerlens/evaluation/alpha_fy2024_audited_report.pdf",
+      "sha256": "3f270f0149e7fa43a7d1902ab4473cac0f95a9b903cf6bc7285cb45c50449698",
+      "pages": 2,
+      "role": "audited_source_of_truth",
+      "page_1_content": "Audited Consolidated Statements of Operations (FY24 Revenue: $1,250.0M)",
+      "page_2_content": "Audited Segment Breakdown (Cloud Platforms: $750.0M)"
+    },
+    {
+      "filename": "alpha_fy2024_draft_projections.pdf",
+      "path": "/Users/hit/Documents/projects/ledgerlens/evaluation/alpha_fy2024_draft_projections.pdf",
+      "sha256": "ffba152ecf2d3e25d5770ad56f8cdcb2681a61c58646942017c18fd1535a5b44",
+      "pages": 2,
+      "role": "conflicting_draft_to_exclude",
+      "page_1_content": "Confidential Draft Operations (FY24 Revenue: $1,100.0M - CONFLICT ON PAGE 1)",
+      "page_2_content": "Preliminary Segment Targets (Cloud Platforms: $660.0M)"
+    }
+  ]
+}
