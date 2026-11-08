@@ -12,14 +12,14 @@ if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
 
 from services.identity.main import app as identity_app
-from common.database import Base, engine, SessionLocal
+from common.database import initialize_database, engine, SessionLocal
 from common.models import User
 from common.auth import get_password_hash
 
 
 @pytest.fixture(scope="module")
 def client():
-    Base.metadata.create_all(bind=engine)
+    initialize_database()
     db = SessionLocal()
     admin = db.query(User).filter(User.username == "test_admin").first()
     if not admin:
@@ -42,6 +42,11 @@ def test_health(client):
     assert res.json()["status"] == "ok"
 
 
+def test_ready_reports_status(client):
+    res = client.get("/ready")
+    assert res.status_code in (200, 503)
+
+
 def test_login_success(client):
     res = client.post(
         "/api/auth/login",
@@ -60,3 +65,20 @@ def test_login_invalid_password(client):
         json={"username": "test_admin", "password": "wrongpassword"},
     )
     assert res.status_code == 401
+
+
+def test_create_user_duplicate_username_returns_409(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "test_admin", "password": "password123"},
+    )
+    token = login.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Attempt to create existing username
+    res = client.post(
+        "/api/users",
+        headers=headers,
+        json={"username": "test_admin", "password": "password123", "role": "employee"},
+    )
+    assert res.status_code == 409
