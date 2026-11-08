@@ -1,216 +1,223 @@
-# 🔍 LedgerLens
+# LedgerLens
 
-Enterprise RAG (Retrieval-Augmented Generation) platform for precise financial document analysis. LedgerLens enables users to upload complex financial PDFs (earnings releases, annual reports, financial statements), parse them while preserving tabular layout and cell-merging structure, and query them in natural language with verifiable page-level citations grounded in source data.
+Financial-PDF analysis workspace with persistent documents, private conversations, and document/page/chunk citations. React/TypeScript calls a FastAPI gateway backed by identity, ingestion, and retrieval modules. Docling is the only PDF parser.
 
-Built with a dark terminal aesthetic, LedgerLens employs a production-grade microservices architecture, advanced layout-aware parsing, hybrid vector/keyword search with Reciprocal Rank Fusion, and LLM generation with strict role-based document access control.
+Low-temperature generation and valid citation identifiers do not establish financial correctness. Verify material conclusions against the original PDF.
 
----
+## Architecture
 
-## 🏗️ Architecture Flow & Services Overview
-
-```
-                                    ┌──────────────────────┐
-                                    │  React TypeScript UI │
-                                    │     (Port 5173)      │
-                                    └──────────┬───────────┘
-                                               │ HTTP / REST
-                                               ▼
-                                    ┌──────────────────────┐
-                                    │  FastAPI API Gateway │
-                                    │     (Port 8000)      │
-                                    └──────────┬───────────┘
-                                               │
-               ┌───────────────────────────────┼───────────────────────────────┐
-               │ Forward                       │ Forward                       │ Forward
-               ▼                               ▼                               ▼
-    ┌────────────────────┐          ┌────────────────────┐          ┌────────────────────┐
-    │  Identity Service  │          │ Ingestion Service  │          │ RAG Engine Service │
-    │    (Port 8001)     │          │    (Port 8002)     │          │    (Port 8003)     │
-    └──────────┬─────────┘          └──────────┬─────────┘          └──────────┬─────────┘
-               │                               │                               │
-               ▼                               ▼                               ▼
-    ┌────────────────────┐          ┌────────────────────┐          ┌────────────────────┐
-    │  PostgreSQL + Redis│          │    IBM Docling     │          │   Elasticsearch    │
-    │  (Users & Tokens)  │          │  Parser + Ollama   │          │ (Hybrid kNN + BM25)│
-    └────────────────────┘          └────────────────────┘          └────────────────────┘
-                                                                               │
-                                                                               ▼
-                                                                    ┌────────────────────┐
-                                                                    │ Google Gemini 2.5  │
-                                                                    │ Grounded Generator │
-                                                                    └────────────────────┘
+```mermaid
+flowchart LR
+    Browser --> Frontend
+    Frontend --> Gateway
+    Gateway --> Identity
+    Gateway --> Ingestion
+    Gateway --> RAG
+    Identity --> SQL
+    Identity --> Redis
+    Ingestion --> SQL
+    Ingestion --> Docling
+    Ingestion --> Ollama
+    Ingestion --> Elasticsearch
+    RAG --> SQL
+    RAG --> Redis
+    RAG --> Ollama
+    RAG --> Elasticsearch
+    RAG --> Gemini
 ```
 
----
+| Module | Container port | Responsibility |
+| --- | ---: | --- |
+| Gateway | 8000 | Verify credentials, strip identity overrides, stream proxy requests |
+| Identity | 8001 | Accounts, signed tokens, durable token revocation, ownership transfer |
+| Ingestion | 8002 | Persistent PDF storage, bounded Docling workers, embeddings, indexing, cleanup |
+| RAG | 8003 | Authorized selected-source retrieval, private history, generation, citation validation |
+| Frontend | 80 | Same-origin API/PDF access and SPA route fallback |
 
-## 📂 Project Structure
+PostgreSQL 16 stores accounts, permissions, conversations, work claims, and leases. Redis 7 stores token revocation identifiers; it is not the job queue. Elasticsearch 8.12 stores versioned evidence chunks. Ollama provides embeddings; Gemini provides generated answers.
 
-```
-ledgerlens/
-├── services/                     # Microservices Architecture
-│   ├── identity/                 # Auth, User Management, JWT & Redis Revocation (Port 8001)
-│   ├── ingestion/                # PDF layout parsing (Docling), chunking & embedding (Port 8002)
-│   ├── rag/                      # Hybrid search, RRF rank blending, Gemini generator (Port 8003)
-│   └── gateway/                  # API Gateway, reverse proxy, JWT auth injection (Port 8000)
-├── packages/common/src/common/   # Shared domain models, Pydantic schemas, database & search
-├── frontend/                     # React + TypeScript + Vite workspace (Port 5173)
-├── sample_pdfs/                  # Sample financial reports for testing
-├── docker-compose.yml            # Containerized PostgreSQL 16, Redis 7, Elasticsearch 8.12
-├── requirements.txt              # Shared Python dependencies
-├── .env.example                  # Environment configuration template
-└── run.sh                        # Unified single-command launcher for all microservices
-```
+## Access and retention
 
----
+- Every upload is persistent until explicitly deleted. Logout, clearing messages, and deleting a conversation do not delete documents or sharing grants.
+- An active document is readable/queryable by an administrator, its current owner, or an explicit access recipient; otherwise access is denied. Deleting/cleanup-pending documents are unavailable regardless of grants.
+- `owner_id` is current ownership. `uploaded_by_id` is original attribution and does not confer continuing ownership after transfer.
+- Only administrators change sharing or wipe the store. Owners and administrators may delete individual documents; recipients cannot delete the shared original.
+- Conversations are owner-only, including against administrators. Foreign conversation/document lookups use 404 rather than disclosing existence.
+- Account deletion requires `transfer_to=<active-admin-id>` when documents need an owner. It preserves attribution and recipient grants, transfers current ownership, and deletes the departing account's private conversations rather than transferring them.
+- Already delivered content, downloaded PDFs, and content sent to an external model cannot be recalled.
 
-## ⚡ Core Features
+### Conversation sources and saved answers
 
-- **IBM Docling Ingestion Pipeline**: Layout-aware document parsing converting complex financial tables (including merged cells and multi-level headers) directly into clean Markdown, preserving table geometry and section hierarchy.
-- **Hybrid Search with RRF**: Combines dense vector cosine similarity (via Ollama `embeddinggemma`, 768d) and sparse BM25 keyword search in Elasticsearch, blended using **Reciprocal Rank Fusion (RRF)** ($K=60$).
-- **Microservices Architecture**: Decoupled domain services (Identity, Ingestion, RAG Engine, API Gateway) for non-blocking parallel processing, horizontal scaling, and isolated context boundaries.
-- **Role-Based Access Control (RBAC)**: Support for `admin` and `employee` roles, persistent file storage vs. session-ephemeral scopes, and strict document Access Control Lists (ACLs) enforced inside the vector retrieval layer.
-- **Instant Token Revocation**: Redis-backed blocklist storing invalidated JWT signatures upon logout or credential changes for immediate session termination.
-- **Grounded Citation Generation**: Uses Google Gemini LLM with low-temperature constraints and strict prompt engineering to generate answers mapped directly to source page numbers (`[pX_cY]`).
+Choose one or more accessible, searchable documents before a document question. The first accepted **document question** locks that set before generation starts; greetings/help do not lock it. Selecting all accessible documents captures their identifiers, not a subscription to later uploads or grants.
 
----
+Reloading, regenerating, and clearing messages preserve the lock. A new conversation is required to change sources. If any selected source becomes inaccessible or unavailable, document questions are blocked rather than silently querying a subset.
 
-## 🧭 Service Mapping & Default Credentials
+SQL permissions determine the exact document/version filters on both vector and keyword search. Index ACL copies are not an authority. Access is checked before sending evidence to generation and again before releasing the answer.
 
-| Service / Layer | URL Endpoint | Port | Description |
-| :--- | :--- | :---: | :--- |
-| **Frontend Workspace** | [http://localhost:5173](http://localhost:5173) | `5173` | React + Vite dark terminal interface |
-| **API Gateway** | [http://localhost:8000](http://localhost:8000) | `8000` | Central Reverse Proxy & Swagger Docs (`/docs`) |
-| **Identity Service** | [http://localhost:8001](http://localhost:8001) | `8001` | Authentication & User Management API |
-| **Ingestion Service** | [http://localhost:8002](http://localhost:8002) | `8002` | Async PDF Layout Parsing & Vector Ingestion |
-| **RAG Engine Service** | [http://localhost:8003](http://localhost:8003) | `8003` | Retrieval, Hybrid Search & Gemini Generation |
-| **Elasticsearch Node** | [http://localhost:9200](http://localhost:9200) | `9200` | Vector & Keyword Search Engine |
-| **PostgreSQL DB** | `localhost:5432` | `5432` | Relational Metadata & Chat History Storage |
-| **Redis Cache** | `localhost:6379` | `6379` | Token Revocation & Job Status Queue |
+Each assistant turn records all supporting documents in the supplied context, including retained assistant history, not just cited pages. Losing any supporting source hides the whole affected answer and its citations, and excludes that original answer from subsequent model context. Unaffected answers remain readable. Browser history is loaded from the server; browser storage is not a durable conversation store.
 
-* **Default Administrator Credentials**: `admin` / `admin123`
+### Authentication
 
----
+Protected routes require an unexpired signed Bearer token with `sub`, `id`, `exp`, and `jti`, matched to the current database account and supported role. Client headers, forms, query parameters, token role claims, and JSON identity fields cannot override that account.
 
-## 🔐 Role & Permission Matrix
+Successful logout revokes that token across processes for its remaining lifetime. Other valid tokens are unaffected. Revocation-store failure returns 503 and protected requests fail closed; the browser does not falsely report successful logout or treat an outage as credential expiry.
 
-| Feature / Capability | Admin Role | Employee Role |
-| :--- | :---: | :---: |
-| Authenticate & Access Chat Workspace | ✅ | ✅ |
-| Upload Ephemeral (Session) Documents | ✅ | ✅ |
-| Upload Persistent Documents | ✅ | ✅ |
-| View All Persistent Documents | ✅ | 🔒 (Scope / ACL limited) |
-| Manage User Registry (Create / Delete Users) | ✅ | ❌ |
-| Update Document Access Control Lists (ACLs) | ✅ | ❌ |
-| Wipe Entire Document Index & Cache | ✅ | ❌ |
+Passwords are bcrypt-hashed, not encrypted. Account passwords are bounded to 72 UTF-8 bytes. Initial administrator configuration additionally rejects missing/known unsafe credentials; an existing account's password is never silently reset at startup.
 
----
+## Ingestion and failures
 
-## 🛠️ Environment Configurations
+- `POST /api/documents` accepts exactly one multipart `file`, without scope/session/identity/sharing fields. PDFs over `UPLOAD_MAX_PAGES` (default 40) or `UPLOAD_MAX_BYTES` (default 20 MB) are rejected before anything is queued.
+- File limit: **50 MiB**. Gateway and ingestion bound raw multipart input with a fixed 1 MiB overhead allowance before parsing. File copying uses 64 KiB reads.
+- Original filenames are bounded metadata; unsafe paths/control characters are rejected. Stored names are generated. PDF signature and readability are validated.
+- Documents progress through `queued`, `processing`, `searchable`, or `failed`; deletion may be `deleting`/`cleanup_pending`. Jobs expose `queued`, `processing`, `completed`, `failed`, or `cleanup_pending`, with stage/error information.
+- Completion requires usable extraction and every intended chunk indexed and visible. Empty extraction, incompatible vectors, partial indexing, and provider failures are not success.
+- SQL work claims survive process loss. Leases and fencing tokens prevent stale workers publishing; recovery advances the document version so old in-flight writes cannot become current evidence. Repeated worker losses eventually require explicit reindexing rather than endless apparent progress.
+- Deletion first removes authoritative access, then reconciles PDF/index/metadata cleanup. A 503 cleanup-pending response means access is removed but physical cleanup is unfinished. Reconciliation retries without resurrecting the document. Store wipe targets the captured document set, not arbitrary files in the upload directory.
 
-Create a `.env` file at the root level using `.env.example` as a reference. Configuration defaults are maintained in [packages/common/src/common/config.py](packages/common/src/common/config.py).
+### Docling only
 
-| Variable | Default Value | Description |
-| :--- | :--- | :--- |
-| `GEMINI_API_KEY` | — | **Required.** Google AI Studio Gemini API Key |
-| `JWT_SECRET` | — | **Required.** Signing key for JWT authentication |
-| `GENERATION_MODEL` | `gemini-2.5-flash` | Gemini model used for grounded chat generation |
-| `DATABASE_URL` | `postgresql://postgres:postgrespassword@localhost:5432/ledgerlens` | Primary relational database URL |
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis instance for blocklist & task state |
-| `ES_HOST` | `http://localhost:9200` | Elasticsearch server endpoint |
-| `ES_INDEX` | `ledgerlens_chunks` | Elasticsearch target index name |
-| `OLLAMA_HOST` | `http://localhost:11434` | Ollama service address for vector embeddings |
-| `EMBEDDING_MODEL` | `embeddinggemma` | Ollama model utilized for dense embeddings |
+There is no AnyDoc integration, alternate PDF parser, or hosted OCR fallback. Missing/failed Docling and unsupported/empty output fail explicitly.
 
----
+Docling conversion runs in a killable, spawn-isolated child process, bounded by `PARSER_TIMEOUT_SECONDS` (default 300). Spawn avoids inheriting native-library locks from API-worker threads. `DOCLING_DEVICE=cpu` is the conservative default. Native accelerated runtimes may explicitly choose `mps`, `cuda`, or `auto`, but changing this setting cannot add GPU support to the supplied CPU-only Linux image.
 
-## 🚀 Quick Start
+Chunks use actual token measurement, preserve table headers and section context, and split supported tables at row boundaries. Oversized indivisible rows/headers or unsupported oversized table layouts fail instead of being flattened and advertised as preserved financial tables. Markdown does **not** losslessly preserve every merged-cell layout. Page counts come from the document structure, not the largest page containing extracted text.
 
-### Prerequisites
-- [Docker & Docker Desktop](https://www.docker.com/)
-- Python 3.11+
-- Node.js 18+ & npm
-- [Ollama](https://ollama.com/) (Optional: for local vector embeddings)
+The Linux image includes Fontconfig and Liberation fonts. These are extraction dependencies: without usable substitute fonts, Docling's native rasterizer can draw character boxes and miss otherwise readable financial tables.
+
+First use downloads public model weights. Provision their cache/network access and processing budget for your documents. The upload size ceiling does not guarantee every document finishes within the configured parser deadline.
+
+### Real model dependencies
+
+Ollama's `embeddinggemma` model supplies 768-dimensional vectors by default. Incompatible model/dimension metadata is rejected. There is no hash-vector substitute.
+
+Gemini defaults to `gemini-3.5-flash-lite` with explicit low temperature. Citation tags (`[Citation: <chunk_id>]`) must identify supplied evidence; structured citations include document, page, chunk, and an authenticated source URL. Missing/invalid references result in abstention rather than manufactured citations. Provider failures return 503, not canned financial analysis.
+
+`RAG_GENERATOR_ADAPTER=deterministic` is restricted to `ENV=test`. It is test infrastructure for behavioral checks, not financial analysis or an accuracy benchmark.
+
+## Install and configure
+
+Supported lock targets: Python **3.13**, Node.js **24**, macOS ARM64 and Linux ARM64/AMD64. Current macOS PyTorch wheels require macOS 14 or later. Linux ingestion locks select official CPU-only PyTorch/Torchvision wheels; they do not install the CUDA stack.
+
+Native Debian/Ubuntu ingestion also needs the system libraries supplied by its image: `sudo apt-get install libgomp1 libgl1 libglib2.0-0 fontconfig fonts-liberation`. Readiness rejects missing usable Linux fonts, and parsing fails explicitly instead of indexing character-box rasters.
+
+Create an isolated environment before running local modules or checks:
 
 ```bash
-# Pull vector embedding model if using Ollama
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install --require-hashes -r requirements-dev.lock
+npm --prefix frontend ci
+export PYTHONPATH="$PWD/packages/common/src:$PWD"
+```
+
+`requirements.lock` contains the lightweight shared runtime; ingestion and RAG each have their own complete runtime lock. `requirements-dev.lock` includes both and the verification tools. Node installs use `frontend/package-lock.json` and `npm ci`, without an unlocked install fallback.
+
+Copy `.env.example` to `.env` only if you do not already have a configuration. Supply private values; never commit or paste credentials into reports:
+
+- `JWT_SECRET`: at least 32 private random bytes; generate with `openssl rand -hex 32`.
+- `ADMIN_INITIAL_PASSWORD`: explicitly supplied for first bootstrap, at least 12 characters and at most 72 UTF-8 bytes.
+- `POSTGRES_PASSWORD`: required by Compose. A generated hex password avoids reserved characters in the composed database URL; otherwise URL-encode database credentials correctly.
+- `GEMINI_API_KEY`: valid key required for generated financial answers. Set it through the environment/secret manager, not a command-line argument.
+- `OLLAMA_HOST`, `EMBEDDING_MODEL`, `EMBEDDING_DIMS`, `ES_INDEX`, storage locations, origins, and time budgets: see `.env.example` and `common.config.Settings`.
+
+Start Ollama and provision the embedding model:
+
+```bash
 ollama pull embeddinggemma
 ```
 
-### 1. Configure Environment
-Create `.env` at root level from the template and set your `GEMINI_API_KEY`:
-```bash
-cp .env.example .env
-# Edit .env and supply your GEMINI_API_KEY
-```
+Do not use `ENV=test` for a shared or untrusted deployment. Rotate external credentials in their provider; editing application code does not rotate a key. Changing the JWT signing secret invalidates existing tokens across all modules.
 
-### 2. Unified System Boot (Recommended)
-The single-command launcher starts database services, verifies ports, and runs all microservices and frontend concurrently:
+### Local launcher
+
 ```bash
-chmod +x run.sh
 ./run.sh
 ```
 
-### 3. Manual / Step-by-Step Setup
+The launcher resolves its own repository directory, uses one selected Python interpreter (`PYTHON_BIN` can override it), starts development datastores, and runs schema **checks** before modules. Occupied application ports abort startup without killing their occupants. Shutdown targets launcher-owned processes only.
 
-#### A. Launch Database Stack
+### Containers
+
 ```bash
-docker compose up -d postgres redis elasticsearch
+# For Docker Desktop, not localhost inside a container:
+# OLLAMA_HOST=http://host.docker.internal:11434
+
+docker compose up -d --build
+docker compose ps
+curl -f http://127.0.0.1:8000/health
+curl -f http://127.0.0.1:8000/ready
 ```
 
-#### B. Install Python Dependencies
+Default edge bindings are loopback: frontend `127.0.0.1:3000`, gateway `127.0.0.1:8000`. Datastores/downstream modules publish no host ports. For host development access, explicitly use:
+
 ```bash
-pip install -r requirements.txt
-export PYTHONPATH="$(pwd)/packages/common/src:$(pwd)"
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
-#### C. Launch Microservices
-Run each service in separate terminal windows:
+Uploads persist in the named `uploads_data` volume, shared with the migration module. Do not remove data volumes during an upgrade. Nginx provides SPA fallback and same-origin `/api/`, `/health`, and `/ready` proxying, including streaming uploads. Public deployment additionally requires an appropriately configured TLS edge and host/network controls; loopback bindings alone are not a universal security guarantee.
+
+`localhost` inside an ingestion/RAG container is that container, not the host Ollama process. On Linux, use a reachable provider on the container network or configure the host gateway explicitly; do not assume a particular bridge IP exists on every machine.
+
+Liveness is separate from readiness. `/health` can remain 200 while required SQL, revocation, search, embedding-model, parser, or generation dependencies make `/ready` return 503. Generation readiness uses a non-generation model-metadata probe, not a paid generation request.
+
+## Schema and resets
+
+Startup runs `python -m common.migrate check`: an empty database gets the current schema (`20261108_clean_schema`), a current one is accepted, and anything else is refused with an instruction to wipe it. There is deliberately no upgrade path from older schemas; reset the database, the Elasticsearch index, and the uploads volume together.
+
+The schema enforces its own invariants: foreign keys on every enforceable relationship, `document_access` and `chat_session_documents` link tables instead of JSON id lists, `CHECK` constraints on roles, statuses and job stages, and `timestamptz` columns that the application always reads as UTC. A chat's documents are fixed at creation; `chat_session_documents.document_id` intentionally has no foreign key, so deleting a document can't silently shrink a chat's evidence set.
+
+To parse a document again (for example after a failure), use `POST /api/documents/{id}/reindex`, or `python -m common.migrate reindex --document-id DOC_ID` as an operator.
+
+## HTTP contracts
+
+All business routes except login require Bearer credentials, at the gateway and directly downstream. Unknown JSON identity fields are rejected. Resource identifiers and practical request limits are validated.
+
+| Area | Operations |
+| --- | --- |
+| Authentication | `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/logout` |
+| Accounts (admin) | `GET/POST /api/users`, `DELETE /api/users/{id}?transfer_to=ADMIN_ID` (204) |
+| Documents | `POST /api/documents` (one multipart `file`, 202), `GET /api/documents`, `GET /api/documents/{id}/source`, `PUT /api/documents/{id}/access`, `POST /api/documents/{id}/reindex`, `DELETE /api/documents/{id}` (204) |
+| Jobs | `GET /api/jobs/{id}` |
+| Store wipe (admin) | `DELETE /api/documents` |
+| Conversations | `GET /api/chat/sessions` (summaries), `POST /api/chat/sessions` with one or more `selected_document_ids` (201), `GET /api/chat/sessions/{id}`, `DELETE /api/chat/sessions/{id}` (204) |
+| Questions | `POST /api/chat/sessions/{id}/messages` with `message`; `DELETE /api/chat/sessions/{id}/messages` clears history (204) |
+| Regeneration | `POST /api/chat/sessions/{id}/regenerate` with the latest assistant `message_id` |
+| Paging | List endpoints take `?limit=` (1–200, default 50) and `?offset=` and return `{items, total, limit, offset}` |
+
+## Verification
+
 ```bash
-# 1. Identity Service
-uvicorn services.identity.main:app --port 8001
+# Isolated SQL/uploads/cache/credentials, no paid generation:
+bash scripts/run_checks.sh
 
-# 2. Ingestion Service
-uvicorn services.ingestion.main:app --port 8002
+# Explicit behavioral evaluation with real Docling/Ollama/Elasticsearch:
+python scripts/evaluate.py --deterministic --output /tmp/ledgerlens-behavior.json
 
-# 3. RAG Engine Service
-uvicorn services.rag.main:app --port 8003
-
-# 4. API Gateway
-uvicorn services.gateway.main:app --port 8000
+# Explicit live generation; supply GEMINI_API_KEY through the process environment:
+python scripts/evaluate.py --live --output /tmp/ledgerlens-live.json
 ```
 
-#### D. Launch Frontend Workspace
+Evaluation uses synthetic reports, known conflicting values, selected-source restrictions, source/page checks, abstention, and unauthorized-access cases. It creates owned resources and a unique index, and records observed results/configuration. Deterministic generation checks are not model-quality results. External-provider failures must remain failed/unexercised prerequisites, not passing accuracy claims.
+
+Dependency audits:
+
 ```bash
-cd frontend
-npm install
-npm run dev
+npm --prefix frontend audit
+python -m pip_audit -r requirements.lock --no-deps --disable-pip
 ```
 
----
+### Evidence from the hardening work
 
-## 📡 API Endpoint Registry
+Historical observations, not guarantees for a new environment; rerun the entry points above and use their actual output.
 
-All routes require authentication headers containing a `Bearer <token>` except authentication endpoints (`/api/auth/login`).
+- **Isolated checks:** the backend suite passed **82 tests** in a virtual environment installed from `requirements-dev.lock` (Python 3.13, macOS arm64). The frontend passed lint, TypeScript, and production build. The last complete `scripts/run_checks.sh` run (80 tests at that time) also passed the disposable schema check.
+- **Dependencies:** the Python lock audit and frontend audit reported no known vulnerabilities for the resolved versions when checked. That says nothing about future advisories or OS/image packages.
+- **Containers:** all application images built. An isolated PostgreSQL-backed Compose stack migrated and served login, with only the frontend and gateway ports published, both bound to loopback. Linux runs exposed two defects that macOS checks hid: a forked worker stalled Docling, and missing fonts made Docling lose a financial table. Both are fixed (spawned parser process; Fontconfig/Liberation fonts plus a font readiness check).
+- **Real Docling → Ollama `embeddinggemma` → Elasticsearch 8.12:** known table values, row labels, periods, pages, and repeated unit legends were retrievable, with chunks of at most 128 tokens. A worker restart recovered accepted work under a newer version without duplicating evidence or keeping obsolete-version chunks.
+- **Actual browser:** multi-document selection editing, readiness blocking, fixed-source capture at the first accepted question, regeneration, fresh-login history restoration, clearing messages without deleting documents or unlocking selection, authenticated page-level PDF opening, grant/revocation answer masking, and cross-process logout revocation. Generation used the explicitly test-only adapter.
+- **Deletion:** during a real Elasticsearch outage, deletion returned 503, denied source access, and masked saved answers. Metadata, chunks, and the PDF were removed after recovery, and unrelated and unmanaged PDFs survived. Regression tests use a real read-only upload directory to show that a disk failure stays pending and denied until storage recovers. They also show that a store wipe during an active worker claim cannot be republished by that worker and spares an unmanaged PDF. The disk-failure and wipe scenarios have not yet been repeated against the Compose stack or in the browser.
+- **Upgrades:** disposable SQLite and PostgreSQL 16 upgrades preserved original bytes and attribution, could be re-run safely, and queued versioned reindex work.
+- **Evaluation:** the strict deterministic run scored **3/6**. All three unauthorized-access cases passed. The test-only generator failed two explicit currency/unit checks and the missing-evidence abstention case. This measures the harness and the test adapter, not live answer quality. An earlier 5/6 report used an incomplete scorer and is superseded.
+- **Not verified:** live Gemini generation, because the configured key was rejected on both generation and model-metadata requests. Also not verified: production load, latency at scale, and universal financial accuracy. No such claims are made.
 
-### Authentication & Users
-- `POST` `/api/auth/login`: Authenticate credentials, return JWT and profile details.
-- `GET` `/api/auth/me`: Fetch active user profile metadata.
-- `GET` `/api/users`: List registered users (Admin only).
-- `POST` `/api/users`: Create a new user profile (Admin only).
-- `DELETE` `/api/users/{user_id}`: Delete user account (Admin only).
-
-### Document Ingestion & Storage
-- `POST` `/api/ingest`: Receive PDF files, extract chunks, compute embeddings, insert data.
-- `GET` `/api/documents`: List uploaded files filtered by RBAC and ACL permissions.
-- `GET` `/api/ingest/jobs/{job_id}`: Poll background ingestion job status (`pending` / `processing` / `completed` / `failed`).
-- `PUT` `/api/documents/{id}/access`: Update Access Control List (ACL) permissions (Admin only).
-- `DELETE` `/api/documents/{id}`: Remove document record, PDF binary, and vector chunks.
-- `DELETE` `/api/embeddings`: Wipe total document store, vector chunks, and uploads.
-
-### Chat & Search Engine
-- `POST` `/api/chat`: Execute RRF hybrid search and generate grounded response with page citations.
-- `GET`/`POST` `/api/chat/sessions`: List or create chat session threads.
-- `GET` `/api/chat/sessions/{id}`: Fetch session history and message timeline.
-- `POST` `/api/chat/clear`: Reset chat history for a session.
-- `POST` `/api/chat/delete`: Remove session thread and associated messages.
-- `POST` `/api/session/end`: Purge session-ephemeral files and reset chat state.
+No verification is performed against the owner's existing database/uploads by default, and no external credential rotation is implied.
