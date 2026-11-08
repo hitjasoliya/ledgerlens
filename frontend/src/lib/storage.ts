@@ -4,8 +4,6 @@ export const StorageKeys = {
   users: `${NAMESPACE}.users`,
   session: `${NAMESPACE}.session`,
   files: `${NAMESPACE}.files`,
-  chats: (userId: string) => `${NAMESPACE}.chats.${userId}`,
-  sessionFiles: (sessionId: string) => `${NAMESPACE}.session_files.${sessionId}`,
 } as const
 
 export function readJSON<T>(key: string, fallback: T): T {

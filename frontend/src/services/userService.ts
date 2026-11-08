@@ -28,17 +28,11 @@ export async function findById(id: string): Promise<SafeUser | null> {
 export async function authenticate(
   username: string,
   password: string,
-  role: Role,
-): Promise<{ access_token: string; user: SafeUser } | null> {
-  try {
-    const res = await loginUser(username, password, role)
-    return {
-      access_token: res.access_token,
-      user: res.user as SafeUser
-    }
-  } catch (e) {
-    console.error("Authentication failed", e)
-    return null
+): Promise<{ access_token: string; user: SafeUser }> {
+  const res = await loginUser(username, password)
+  return {
+    access_token: res.access_token,
+    user: res.user,
   }
 }
 
@@ -46,7 +40,6 @@ export type CreateUserInput = {
   username: string
   password: string
   role: Role
-  createdBy?: string
 }
 
 export async function createUser(input: CreateUserInput): Promise<SafeUser> {
@@ -56,10 +49,10 @@ export async function createUser(input: CreateUserInput): Promise<SafeUser> {
     role: input.role,
   })
   bus.emit(Topics.users)
-  return newUser as SafeUser
+  return newUser
 }
 
-export async function deleteUser(id: string): Promise<void> {
-  await removeUser(id)
+export async function deleteUser(id: string, transferTo?: string): Promise<void> {
+  await removeUser(id, transferTo)
   bus.emit(Topics.users)
 }

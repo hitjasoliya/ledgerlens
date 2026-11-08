@@ -10,22 +10,20 @@ import './CreateUserDialog.css'
 type Props = {
   open: boolean
   onClose: () => void
-  createdBy: string
 }
 
-export function CreateUserDialog({ open, onClose, createdBy }: Props) {
+export function CreateUserDialog({ open, onClose }: Props) {
   if (!open) return null
   return (
     <CreateUserDialogInner
       key={String(open)}
       open={open}
       onClose={onClose}
-      createdBy={createdBy}
     />
   )
 }
 
-function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
+function CreateUserDialogInner({ open, onClose }: Props) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState<Role>('employee')
@@ -41,7 +39,6 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
         username: username.trim(),
         password,
         role,
-        createdBy,
       })
       onClose()
     } catch (err) {
@@ -55,7 +52,7 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
     <Modal
       open={open}
       onClose={onClose}
-      title="Create user"
+      title="Add user"
       description="Add a new admin or employee account."
       size="sm"
     >
@@ -89,10 +86,15 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
           </label>
         </div>
 
+        {error && <div className="notice notice--danger" role="alert">{error}</div>}
+
         <Input
           label="Username"
           value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          onChange={(e) => {
+            setUsername(e.target.value)
+            if (error) setError(null)
+          }}
           placeholder="e.g. priya.kumar"
           required
         />
@@ -100,11 +102,13 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
           label="Password"
           type="password"
           value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          onChange={(e) => {
+            setPassword(e.target.value)
+            if (error) setError(null)
+          }}
           placeholder="Minimum 4 characters"
           required
           minLength={4}
-          error={error ?? undefined}
         />
 
         <div className="create-user__actions">
@@ -112,7 +116,7 @@ function CreateUserDialogInner({ open, onClose, createdBy }: Props) {
             Cancel
           </Button>
           <Button type="submit" variant="primary" loading={submitting}>
-            Create user
+            Add user
           </Button>
         </div>
       </form>

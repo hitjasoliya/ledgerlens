@@ -1,141 +1,65 @@
 .login {
   position: relative;
-  min-height: 100vh;
-  background: var(--color-bg);
+  flex: 1;
+  min-height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  overflow: hidden;
-}
-
-.login__scanline {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 100;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, 0.03) 2px,
-    rgba(0, 0, 0, 0.03) 4px
-  );
+  padding: 80px 20px 40px;
+  overflow-y: auto;
+  background: var(--bg);
 }
 
 .login__back {
   position: absolute;
-  top: 24px;
-  left: 24px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-muted);
-  padding: 8px 14px;
-  border: 1px solid transparent;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: color var(--transition-base), border-color var(--transition-base);
-  z-index: 2;
+  top: 18px;
+  left: 20px;
+  padding: 4px;
+  border-radius: var(--radius-sm);
 }
 
-.login__back:hover {
-  color: var(--color-accent);
-  border-color: var(--color-border);
-  text-decoration: underline;
-  text-underline-offset: 4px;
-}
-
-.login__card {
-  position: relative;
+.login__panel {
   width: 100%;
-  max-width: 440px;
-  background: var(--color-bg-elevated);
-  border: 1px solid var(--color-border);
-  padding: 40px 36px;
+  max-width: 360px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  z-index: 1;
-}
-
-.login__brand {
-  display: flex;
-  justify-content: center;
-}
-
-.login__role-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: var(--color-bg);
-  padding: 2px;
-  gap: 2px;
-}
-
-.login__role-btn {
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 10px 12px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--color-text-muted);
-  transition: background var(--transition-base), color var(--transition-base);
-}
-
-.login__role-btn.is-active {
-  background: var(--color-bg-elevated);
-  color: var(--color-accent);
-  border: 1px solid var(--color-border);
-}
-
-.login__role-btn:not(.is-active):hover {
-  color: var(--color-text);
+  gap: 24px;
 }
 
 .login__header {
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+  text-align: center;
 }
 
 .login__title {
-  font-family: var(--font-mono);
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 600;
   letter-spacing: -0.02em;
 }
 
 .login__subtitle {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-muted);
-  line-height: 1.6;
+  margin-top: 8px;
+  font-size: 15px;
+  color: var(--text-muted);
 }
 
 .login__form {
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.login__hint {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-subtle);
-  text-align: left;
-  border-top: 1px solid var(--color-border);
-  padding-top: 16px;
-}
+.login__form .btn { margin-top: 6px; }
 
-.login__hint code {
-  background: var(--color-bg);
-  padding: 2px 8px;
-  border: 1px solid var(--color-border);
-  font-size: 11px;
-  color: var(--color-accent);
+.login__panel > .notice,
+.login__panel > .btn { width: 100%; }
+
+.auth-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  animation: pulse 1.4s ease-in-out infinite;
 }

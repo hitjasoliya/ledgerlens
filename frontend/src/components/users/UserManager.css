@@ -1,128 +1,88 @@
-.user-manager {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  max-width: 1100px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 28px 32px;
-}
-
-.user-manager__header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.user-manager__title {
-  font-size: 22px;
-  letter-spacing: -0.02em;
-}
-
-.user-manager__subtitle {
-  font-size: 14px;
-  color: var(--color-text-muted);
-  margin-top: 4px;
-}
-
-.user-manager__list {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--color-border);
+.users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--color-bg-elevated);
   overflow: hidden;
 }
 
-.user-manager__list-head,
-.user-manager__row {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 80px;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 18px;
-}
-
-.user-manager__list-head {
-  background: var(--color-bg-subtle);
-  font-size: 11.5px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-subtle);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.user-manager__row + .user-manager__row {
-  border-top: 1px solid var(--color-border);
-}
-
-.user-manager__row:hover {
-  background: var(--color-bg);
-}
-
-.user-manager__member {
+.users__row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  padding: 12px 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+  transition: background-color 120ms ease;
 }
 
-.user-manager__name {
-  font-weight: 500;
-  color: var(--color-text);
-  display: inline-flex;
+.users__row:last-child { border-bottom: none; }
+.users__row:hover { background: var(--bg-hover); }
+
+.users__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.users__name {
+  display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.user-manager__you {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: var(--color-bg-subtle);
-  color: var(--color-text-subtle);
-  border: 1px solid var(--color-border);
+  font-size: 14px;
   font-weight: 500;
 }
 
-.user-manager__date {
-  color: var(--color-text-muted);
-  font-size: 13.5px;
+.users__you {
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  background: var(--bg-subtle);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
 }
 
-.user-manager__actions {
+.users__meta {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.users__role {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.users__actions {
+  width: 34px;
+  flex-shrink: 0;
+}
+
+.delete-user {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.user-manager__delete {
-  width: 32px;
-  height: 32px;
+.delete-user__text {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.delete-user__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.delete-user__select {
+  height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color-text-muted);
-  transition: background 0.12s ease, color 0.12s ease;
-}
-
-.user-manager__delete:hover {
-  background: rgba(192, 71, 62, 0.08);
-  color: var(--color-danger);
-}
-
-@media (max-width: 720px) {
-  .user-manager {
-    padding: 20px 16px;
-  }
-  .user-manager__list-head,
-  .user-manager__row {
-    grid-template-columns: 1.6fr 1fr 60px;
-  }
-  .user-manager__list-head span:nth-child(3),
-  .user-manager__row > div:nth-child(3) {
-    display: none;
-  }
+  background: var(--bg);
+  font-weight: 400;
 }

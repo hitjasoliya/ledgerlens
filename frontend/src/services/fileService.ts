@@ -1,115 +1,112 @@
-import type { FileEntry } from '../types'
+import type { ClearEmbeddingsResponse, DocumentResponse, FileEntry } from '../types'
 import {
+  ApiError,
   clearAllEmbeddings as apiClearAllEmbeddings,
   fetchDocuments,
   getJobStatus,
+  reindexDocument,
   removeDocument,
   updateDocumentAccess,
 } from '../lib/api'
 import { bus, Topics } from '../lib/eventBus'
 
-function mapDocument(doc: any): FileEntry {
+export function mapDocument(doc: DocumentResponse): FileEntry {
   return {
     id: doc.id,
     filename: doc.filename,
     source: doc.source,
     uploadedBy: doc.uploaded_by,
     uploadedById: doc.uploaded_by_id,
+    ownerId: doc.owner_id ?? null,
     uploadedAt: doc.uploaded_at,
-    scope: doc.scope,
-    accessList: doc.access_list,
+    accessList: doc.access_list ?? [],
     pagesParsed: doc.pages_parsed,
     chunksCreated: doc.chunks_created,
     chunksIndexed: doc.chunks_indexed,
-    isPersistent: doc.is_persistent,
-    sessionId: doc.session_id,
-    indexStatus: doc.index_status,
-    jobError: doc.job_error,
+    status: doc.status,
+    parser: doc.parser,
+    embeddingModel: doc.embedding_model,
+    embeddingDims: doc.embedding_dims,
+    errorMessage: doc.error_message,
   }
 }
 
 export async function listAllFiles(): Promise<FileEntry[]> {
-  try {
-    const docs = await fetchDocuments()
-    return docs.map(mapDocument).sort((a, b) => b.uploadedAt - a.uploadedAt)
-  } catch (e) {
-    console.error('Failed to list all files', e)
-    return []
-  }
+  const docs = await fetchDocuments()
+  return docs.map(mapDocument).sort((a, b) => b.uploadedAt - a.uploadedAt)
 }
 
 export async function listAdminFiles(): Promise<FileEntry[]> {
-  const all = await listAllFiles()
-  return all.filter((f) => f.scope === 'admin')
+  return await listAllFiles()
 }
 
 export async function listFilesAccessibleTo(userId: string): Promise<FileEntry[]> {
   const all = await listAllFiles()
   return all.filter(
     (f) =>
-      f.scope === 'admin' &&
-      (f.accessList.includes(userId) || f.uploadedById === userId),
+      f.accessList.includes(userId) ||
+      f.ownerId === userId,
   )
 }
 
 export async function listFilesOwnedBy(userId: string): Promise<FileEntry[]> {
   const all = await listAllFiles()
-  return all.filter((f) => f.scope === 'employee' && f.uploadedById === userId)
+  return all.filter((f) => f.ownerId === userId)
 }
 
-export function findFile(_id: string): FileEntry | null {
-  // Note: findFile usage is deprecated in favour of direct accessibleFiles lookup in ChatShell.tsx
-  return null
-}
-
-export async function createFile(input: any): Promise<FileEntry> {
-  // File is automatically created by the backend ingest endpoint.
-  // We emit Topics.files to notify hooks to refresh document state.
+export async function updateFileAccess(
+  id: string,
+  accessList: string[],
+): Promise<FileEntry> {
+  const updated = await updateDocumentAccess(id, accessList)
   bus.emit(Topics.files)
-  return {
-    id: input.id || '',
-    filename: input.filename,
-    source: input.source,
-    uploadedBy: input.uploadedBy,
-    uploadedById: input.uploadedById,
-    uploadedAt: Date.now(),
-    scope: input.scope,
-    accessList: input.accessList,
-    pagesParsed: input.pagesParsed,
-    chunksCreated: input.chunksCreated,
-    chunksIndexed: input.chunksIndexed,
-    isPersistent: input.isPersistent,
-    sessionId: input.sessionId,
-  }
+  return mapDocument(updated)
 }
 
-export async function updateFileAccess(id: string, accessList: string[]): Promise<FileEntry | null> {
-  try {
-    const updated = await updateDocumentAccess(id, accessList)
-    bus.emit(Topics.files)
-    return mapDocument(updated)
-  } catch (e) {
-    console.error('Failed to update access', e)
-    return null
-  }
-}
-
+// Deletion and wipe refresh the library whatever the outcome: a pending cleanup
+// has already withdrawn access, so the stale row must not linger as if usable.
 export async function deleteFile(id: string): Promise<void> {
   try {
     await removeDocument(id)
+  } finally {
     bus.emit(Topics.files)
-  } catch (e) {
-    console.error('Failed to delete file', e)
   }
 }
 
-export async function clearAllEmbeddings(): Promise<{
-  deleted: number
-  filesDeleted: number
-}> {
-  const res = await apiClearAllEmbeddings()
-  bus.emit(Topics.files)
-  return { deleted: res.deleted, filesDeleted: res.files_deleted }
+export async function clearAllEmbeddings(): Promise<ClearEmbeddingsResponse> {
+  try {
+    return await apiClearAllEmbeddings()
+  } finally {
+    bus.emit(Topics.files)
+  }
+}
+
+/** Queue a failed document for parsing again and follow the new job. */
+export async function retryFile(id: string): Promise<void> {
+  try {
+    const { job_id } = await reindexDocument(id)
+    bus.emit(Topics.files)
+    await pollJobUntilDone(job_id)
+  } finally {
+    bus.emit(Topics.files)
+  }
+}
+
+export const DELETE_CONFIRMATION =
+  'This is irreversible. Conversations that selected this document will stop answering document questions and must start a new conversation.'
+
+export function describeDeletionError(action: string, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err)
+  if (err instanceof ApiError && err.status === 503) {
+    return `${action} incomplete: ${message}. The library now shows the current state; cleanup retries automatically once storage and search recover.`
+  }
+  return `${action} failed: ${message}`
+}
+
+function delay(ms: number): Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<void>()
+  setTimeout(resolve, ms)
+  return promise
 }
 
 export async function pollJobUntilDone(
@@ -117,27 +114,65 @@ export async function pollJobUntilDone(
   timeoutMs = 5 * 60 * 1000,
 ): Promise<string> {
   const deadline = Date.now() + timeoutMs
-  let status = 'pending'
-  while (Date.now() < deadline) {
-    try {
+  try {
+    while (Date.now() < deadline) {
       const job = await getJobStatus(jobId)
-      status = job.status
-      if (status === 'completed' || status === 'failed') {
-        bus.emit(Topics.files)
-        return status
-      }
-    } catch {
-      // Job may have been wiped (e.g. "Clear embeddings") while polling; stop quietly.
-      bus.emit(Topics.files)
-      return status
+      if (job.status === 'completed' || job.status === 'failed') return job.status
+      if (job.status === 'cleanup_pending') throw new Error('Upload is pending cleanup')
+      await delay(1500)
     }
-    const delay = (ms: number): Promise<void> => {
-      const { promise, resolve } = Promise.withResolvers<void>()
-      setTimeout(resolve, ms)
-      return promise
-    }
-    await delay(2000)
+    throw new Error('Ingestion is still pending. The accepted upload remains in your library.')
+  } finally {
+    bus.emit(Topics.files)
   }
-  bus.emit(Topics.files)
-  return status
+}
+
+export async function waitForDocumentsSearchable(
+  documentIds: string[],
+  timeoutMs = 5 * 60 * 1000,
+): Promise<void> {
+  if (documentIds.length === 0) return
+  const idSet = new Set(documentIds)
+  const deadline = Date.now() + timeoutMs
+
+  while (Date.now() < deadline) {
+    const files = await listAllFiles()
+    const targetFiles = files.filter((f) => idSet.has(f.id))
+    if (targetFiles.length !== idSet.size) {
+      throw new Error('A selected source is unavailable. Restore access or start a new conversation.')
+    }
+
+    // Check if any failed
+    const failedDoc = targetFiles.find((f) => f.status === 'failed')
+    if (failedDoc) {
+      throw new Error(
+        `Selected document "${failedDoc.filename}" failed processing: ${
+          failedDoc.errorMessage || 'Unknown error'
+        }`,
+      )
+    }
+
+    // Check if any deleting or cleanup_pending
+    const unavailableDoc = targetFiles.find(
+      (f) => f.status === 'deleting' || f.status === 'cleanup_pending',
+    )
+    if (unavailableDoc) {
+      throw new Error(
+        `Selected document "${unavailableDoc.filename}" is unavailable (${unavailableDoc.status}).`,
+      )
+    }
+
+    // All must be searchable
+    const allSearchable =
+      targetFiles.length === idSet.size &&
+      targetFiles.every((f) => f.status === 'searchable')
+
+    if (allSearchable) {
+      return
+    }
+
+    await delay(1500)
+  }
+
+  throw new Error('Timed out waiting for selected documents to become searchable.')
 }

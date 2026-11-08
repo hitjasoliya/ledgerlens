@@ -3,6 +3,7 @@ import type { FileEntry, SafeUser } from '../../types'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { updateFileAccess } from '../../services/fileService'
+import './FileUploadDialog.css'
 import './AccessManagerDialog.css'
 
 type Props = {
@@ -34,6 +35,8 @@ type InnerProps = {
 
 function AccessManagerDialogInner({ open, file, employees, onClose }: InnerProps) {
   const [accessIds, setAccessIds] = useState<string[]>(() => file.accessList)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const toggle = (id: string) => {
     setAccessIds((prev) =>
@@ -41,25 +44,50 @@ function AccessManagerDialogInner({ open, file, employees, onClose }: InnerProps
     )
   }
 
-  const handleSave = () => {
-    updateFileAccess(file.id, accessIds)
-    onClose()
+  const handleSave = async () => {
+    setSubmitting(true)
+    setError(null)
+    try {
+      await updateFileAccess(file.id, accessIds)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        if (!submitting) onClose()
+      }}
       title="Manage access"
       description={`Choose which employees can query "${file.filename}".`}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave}>Save changes</Button>
+          <Button variant="secondary" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            loading={submitting}
+            disabled={submitting}
+          >
+            Save changes
+          </Button>
         </>
       }
     >
       <div className="access-dialog">
+        {error && (
+          <div className="notice notice--danger" role="alert">
+            {error}
+          </div>
+        )}
+
         {employees.length === 0 ? (
           <div className="access-dialog__empty">
             No employees yet. Create one from the Users tab to grant access.
@@ -77,6 +105,7 @@ function AccessManagerDialogInner({ open, file, employees, onClose }: InnerProps
                   <input
                     type="checkbox"
                     checked={checked}
+                    disabled={submitting}
                     onChange={() => toggle(emp.id)}
                   />
                 </label>

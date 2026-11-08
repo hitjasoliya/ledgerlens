@@ -3,8 +3,9 @@ import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { UploadIcon, FileIcon, CloseIcon } from '../ui/Icon'
 import type { SafeUser } from '../../types'
-import { ingestPdf } from '../../lib/api'
-import { createFile, pollJobUntilDone } from '../../services/fileService'
+import { MAX_UPLOAD_BYTES, MAX_UPLOAD_PAGES, ingestPdf } from '../../lib/api'
+import { pollJobUntilDone, updateFileAccess } from '../../services/fileService'
+import { bus, Topics } from '../../lib/eventBus'
 import './FileUploadDialog.css'
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   employees: SafeUser[]
 }
 
-export function FileUploadDialog({ open, onClose, uploader, employees }: Props) {
+export function FileUploadDialog({ open, onClose, employees }: Props) {
   const [file, setFile] = useState<File | null>(null)
   const [accessIds, setAccessIds] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
@@ -61,31 +62,25 @@ export function FileUploadDialog({ open, onClose, uploader, employees }: Props) 
     if (!file) return
     setSubmitting(true)
     setError(null)
+
     try {
-      const result = await ingestPdf({
-        file,
-        userId: uploader.id,
-        sessionId: `admin_persistent_${uploader.id}`,
-        scope: 'admin',
-        isPersistent: true,
-        allowedUsers: accessIds,
-      })
-      createFile({
-        filename: file.name,
-        source: result.source,
-        uploadedBy: uploader.username,
-        uploadedById: uploader.id,
-        scope: 'admin',
-        accessList: accessIds,
-        pagesParsed: result.pages_parsed,
-        chunksCreated: result.chunks_created,
-        chunksIndexed: result.chunks_indexed,
-        isPersistent: true,
-        sessionId: `admin_persistent_${uploader.id}`,
-      })
-      if (result.job_id) {
-        void pollJobUntilDone(result.job_id)
+      // POST multipart accepts file ONLY per contract
+      const result = await ingestPdf(file)
+
+      // If recipients were selected, update access permissions
+      if (accessIds.length > 0) {
+        await updateFileAccess(result.id, accessIds)
+      } else {
+        bus.emit(Topics.files)
       }
+
+      // Track indexing readiness
+      if (result.job_id) {
+        void pollJobUntilDone(result.job_id).catch((err: unknown) => {
+          setError(err instanceof Error ? err.message : String(err))
+        })
+      }
+
       reset()
       onClose()
     } catch (err) {
@@ -157,7 +152,10 @@ export function FileUploadDialog({ open, onClose, uploader, employees }: Props) 
           ) : (
             <div className="upload-dialog__placeholder">
               <UploadIcon size={20} />
-              <span>Drop PDF here or click to browse</span>
+              <span>Drop a PDF here or click to browse</span>
+              <span className="upload-dialog__limits">
+                Up to {MAX_UPLOAD_PAGES} pages and {MAX_UPLOAD_BYTES / 1024 / 1024} MB
+              </span>
             </div>
           )}
         </div>
