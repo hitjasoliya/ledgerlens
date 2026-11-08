@@ -1,18 +1,38 @@
-from typing import List, Optional
-from pydantic import BaseModel, Field
+from typing import Annotated, Generic, List, Literal, Optional, TypeVar
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+UserRole = Literal["admin", "employee"]
+ResourceId = Annotated[
+    str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+]
 
 
 # Auth & User Schemas
 class LoginRequest(BaseModel):
-    username: str
-    password: str
-    role: Optional[str] = "employee"
+    model_config = ConfigDict(extra="forbid")
+
+    username: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=1, max_length=72)
+
+    @field_validator("username")
+    @classmethod
+    def reject_blank_username(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Username must not be blank")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def bound_password_bytes(cls, value: str) -> str:
+        if len(value.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 UTF-8 bytes")
+        return value
 
 
 class UserResponse(BaseModel):
     id: str
     username: str
-    role: str
+    role: UserRole
     createdAt: int
 
 
@@ -22,16 +42,23 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
 
-class UserCreateRequest(BaseModel):
-    username: str
-    password: str
-    role: str = "employee"
+class UserCreateRequest(LoginRequest):
+    role: UserRole = "employee"
 
 
-# Document & Ingestion Schemas
+# Document and ingestion contracts
+DocumentStatus = Literal[
+    "queued", "processing", "searchable", "failed", "deleting", "cleanup_pending"
+]
+JobStatus = Literal["queued", "processing", "completed", "failed", "cleanup_pending"]
+
+
 class Citation(BaseModel):
-    page: int
+    document_id: ResourceId
+    filename: str
+    page: int = Field(ge=1)
     chunk_id: str
+    source_url: str
 
 
 class DocumentResponse(BaseModel):
@@ -40,16 +67,17 @@ class DocumentResponse(BaseModel):
     source: str
     uploaded_by_id: str
     uploaded_by: str
+    owner_id: Optional[str] = None
     uploaded_at: int
-    scope: str
     access_list: List[str]
     pages_parsed: int
     chunks_created: int
     chunks_indexed: int
-    is_persistent: bool
-    session_id: Optional[str] = None
-    index_status: str = "unknown"  # pending | processing | completed | failed | unknown
-    job_error: Optional[str] = None
+    status: DocumentStatus
+    parser: Optional[str] = None
+    embedding_model: Optional[str] = None
+    embedding_dims: Optional[int] = None
+    error_message: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
@@ -57,14 +85,14 @@ class IngestResponse(BaseModel):
     pages_parsed: int
     chunks_created: int
     chunks_indexed: int
-    pages_failed: int = 0
-    id: Optional[str] = None
-    job_id: Optional[str] = None
+    id: str
+    job_id: str
 
 
 class JobStatusResponse(BaseModel):
     job_id: str
-    status: str  # pending, processing, completed, failed
+    status: JobStatus
+    stage: str
     error_message: Optional[str] = None
     pages_parsed: int = 0
     chunks_created: int = 0
@@ -73,28 +101,37 @@ class JobStatusResponse(BaseModel):
 
 
 class UpdateAccessRequest(BaseModel):
-    access_list: List[str]
+    model_config = ConfigDict(extra="forbid")
+    access_list: List[ResourceId] = Field(max_length=1000)
 
 
-# Chat & RAG Schemas
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-    user_id: Optional[str] = "guest"
-    session_id: Optional[str] = "default_session"
+class ChatMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message: str = Field(min_length=1, max_length=10000)
+
+    @field_validator("message")
+    @classmethod
+    def reject_blank_message(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Message must not be blank")
+        return value
 
 
 class ChatResponse(BaseModel):
     answer: str
-    citations: List[Citation] = []
+    citations: List[Citation] = Field(default_factory=list)
     chunks_used: int = 0
+    message_id: Optional[str] = None
+    user_message_id: Optional[str] = None
 
 
 class ChatMessageResponse(BaseModel):
     id: str
-    role: str
+    role: Literal["user", "assistant"]
     content: str
-    citations: List[Citation] = []
+    citations: List[Citation] = Field(default_factory=list)
     chunks_used: int = 0
+    unavailable: bool = False
     created_at: int
 
 
@@ -104,13 +141,32 @@ class ChatSessionResponse(BaseModel):
     user_id: str
     created_at: int
     updated_at: int
-    context_file_id: Optional[str] = None
-    messages: List[ChatMessageResponse] = []
+    selected_document_ids: List[str] = Field(default_factory=list)
+    revision: int = 0
+    messages: List[ChatMessageResponse] = Field(default_factory=list)
+
+
+class ChatSessionSummary(BaseModel):
+    """A chat as listed in the sidebar; load the chat itself for its messages."""
+
+    id: str
+    title: str
+    created_at: int
+    updated_at: int
+    selected_document_ids: List[str] = Field(default_factory=list)
+    message_count: int = 0
 
 
 class ChatSessionCreate(BaseModel):
-    title: Optional[str] = "New Chat"
-    context_file_id: Optional[str] = None
+    model_config = ConfigDict(extra="forbid")
+    title: str = Field(default="New Chat", min_length=1, max_length=200)
+    # A chat's documents are chosen once, here, and never change afterwards.
+    selected_document_ids: List[ResourceId] = Field(min_length=1, max_length=100)
+
+
+class RegenerateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message_id: ResourceId
 
 
 class ClearChatResponse(BaseModel):
@@ -121,7 +177,23 @@ class EmbeddingsClearResponse(BaseModel):
     ok: bool
     deleted: int = 0
     files_deleted: int = 0
+    cleanup_pending: int = 0
 
 
 class HealthResponse(BaseModel):
     status: str = "ok"
+
+
+PAGE_DEFAULT_LIMIT = 50
+PAGE_MAX_LIMIT = 200
+
+ItemT = TypeVar("ItemT")
+
+
+class Page(BaseModel, Generic[ItemT]):
+    """One page of a list endpoint: `items[offset : offset + limit]` of `total`."""
+
+    items: List[ItemT]
+    total: int
+    limit: int
+    offset: int
