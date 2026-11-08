@@ -1,36 +1,22 @@
 import { useMemo } from 'react'
-import { DashboardShell } from '../components/layout/DashboardShell'
-import type { DashboardTab } from '../components/layout/DashboardShell'
-import { ChatShell } from '../components/chat/ChatShell'
+import { AppShell } from '../components/layout/AppShell'
+import type { ShellPage } from '../components/layout/AppShell'
 import { AdminFileManager } from '../components/files/AdminFileManager'
 import { UserManager } from '../components/users/UserManager'
-import { MessageIcon, FolderIcon, UsersIcon } from '../components/ui/Icon'
+import { FolderIcon, UsersIcon } from '../components/ui/Icon'
 import { useAuth } from '../auth/useAuth'
-import { useAdminFiles } from '../services/hooks'
+import { useAdminFilesState } from '../services/hooks'
 
 export function AdminDashboard() {
   const { user } = useAuth()
-  const files = useAdminFiles()
+  const { files, loading: filesLoading } = useAdminFilesState()
 
-  const tabs = useMemo<DashboardTab[]>(() => {
+  const pages = useMemo<ShellPage[]>(() => {
     if (!user) return []
     return [
       {
-        id: 'chat',
-        label: 'Chat',
-        icon: <MessageIcon size={16} />,
-        content: (
-          <ChatShell
-            user={user}
-            accessibleFiles={files}
-            allowFileAttach
-            fileScope="admin"
-          />
-        ),
-      },
-      {
         id: 'files',
-        label: 'Files',
+        label: 'Documents',
         icon: <FolderIcon size={16} />,
         content: <AdminFileManager uploader={user} />,
       },
@@ -41,9 +27,9 @@ export function AdminDashboard() {
         content: <UserManager currentUserId={user.id} />,
       },
     ]
-  }, [user, files])
+  }, [user])
 
   if (!user) return null
 
-  return <DashboardShell user={user} tabs={tabs} defaultTab="chat" />
+  return <AppShell key={user.id} user={user} accessibleFiles={files} filesLoading={filesLoading} pages={pages} />
 }

@@ -1,0 +1,271 @@
+.shell {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+}
+
+/* ---------- Sidebar ---------- */
+
+.shell__sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  transition: margin-left 240ms var(--ease-out);
+}
+
+.shell.is-collapsed .shell__sidebar {
+  margin-left: calc(-1 * var(--sidebar-width));
+}
+
+.shell__sidebar-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 8px 0 14px;
+}
+
+.shell__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px 12px;
+}
+
+.shell__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.shell__nav-item svg { color: var(--text-muted); flex-shrink: 0; }
+.shell__nav-item:hover { background: var(--bg-hover); }
+.shell__nav-item.is-active { background: var(--bg-active); }
+
+/* ---------- Chat history ---------- */
+
+.shell__history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 12px;
+}
+
+.shell__history-label {
+  position: sticky;
+  top: 0;
+  padding: 10px 10px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-subtle);
+  background: var(--bg-sidebar);
+}
+
+.shell__history-empty {
+  padding: 4px 10px;
+  font-size: 13px;
+  color: var(--text-subtle);
+}
+
+.shell__history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.shell__chat {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+  transition: background-color 120ms ease;
+}
+
+.shell__chat:hover { background: var(--bg-hover); }
+.shell__chat.is-active { background: var(--bg-active); }
+
+.shell__chat-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+  text-align: left;
+  color: var(--text);
+}
+
+.shell__chat-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell__chat-flag {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-subtle);
+}
+
+.shell__chat-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-right: 4px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+
+.shell__chat:hover .shell__chat-delete,
+.shell__chat.is-active .shell__chat-delete,
+.shell__chat-delete:focus-visible {
+  opacity: 1;
+}
+
+.shell__chat-delete:hover {
+  color: var(--danger);
+  background: var(--bg-hover);
+}
+
+@media (hover: none) {
+  .shell__chat-delete { opacity: 1; }
+}
+
+/* ---------- Account ---------- */
+
+.shell__account {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.shell__account-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px 6px 8px;
+}
+
+.shell__account-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.shell__account-name {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.shell__account-role {
+  font-size: 12px;
+  color: var(--text-subtle);
+}
+
+.shell__logout-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 4px 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.shell__logout-error button {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ---------- Main ---------- */
+
+.shell__main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* The reveal button appears in the main area only when the sidebar is hidden. */
+.shell__reveal { display: none; }
+.shell.is-collapsed .shell__reveal { display: block; }
+
+.shell__page-bar {
+  display: none;
+  align-items: center;
+  height: 56px;
+  padding: 0 12px;
+  flex-shrink: 0;
+}
+
+.shell.is-collapsed .shell__page-bar { display: flex; }
+
+.shell__page {
+  flex: 1;
+  min-height: 0;
+}
+
+.shell__scrim { display: none; }
+
+@media (max-width: 768px) {
+  .shell__sidebar,
+  .shell.is-collapsed .shell__sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(var(--sidebar-width), 85vw);
+    margin-left: 0;
+    transform: translateX(-100%);
+    transition: transform 280ms var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .shell.is-mobile-open .shell__sidebar {
+    transform: translateX(0);
+  }
+
+  .shell__scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: var(--overlay);
+  }
+
+  .shell__reveal,
+  .shell.is-mobile-open .shell__reveal { display: block; }
+
+  .shell__page-bar,
+  .shell.is-collapsed .shell__page-bar { display: flex; }
+}

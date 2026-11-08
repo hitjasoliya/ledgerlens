@@ -1,13 +1,16 @@
 import type { ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { citationNumber } from '../../lib/citations'
 import './MarkdownRenderer.css'
 
 type Props = {
   content: string
+  onCitation?: (n: number) => void
+  citationLabel?: (n: number) => string
 }
 
-export function MarkdownRenderer({ content }: Props) {
+export function MarkdownRenderer({ content, onCitation, citationLabel }: Props) {
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm]}
@@ -36,11 +39,27 @@ export function MarkdownRenderer({ content }: Props) {
         ol: ({ children }) => <ol className="md-list">{children}</ol>,
         li: ({ children }) => <li className="md-li">{children}</li>,
         p: ({ children }) => <p className="md-p">{children}</p>,
-        a: ({ href, children }) => (
-          <a className="md-link" href={href} target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
+        a: ({ href, children }) => {
+          const n = citationNumber(href)
+          if (n !== null) {
+            return (
+              <button
+                type="button"
+                className="md-cite"
+                onClick={() => onCitation?.(n)}
+                title={citationLabel?.(n)}
+                aria-label={`Source ${n}${citationLabel ? `: ${citationLabel(n)}` : ''}`}
+              >
+                {n}
+              </button>
+            )
+          }
+          return (
+            <a className="md-link" href={href} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          )
+        },
         blockquote: ({ children }) => (
           <blockquote className="md-blockquote">{children}</blockquote>
         ),
@@ -80,7 +99,7 @@ function extractText(node: ReactNode): string {
 }
 
 function isNumeric(text: string): boolean {
-  return /^[\s$€£¥%()\-]*[\d,.]+[\s$€£¥%()\-]*$/.test(text.trim())
+  return /^[\s$€£¥%()-]*[\d,.]+[\s$€£¥%()-]*$/.test(text.trim())
 }
 
 function isNegativePercent(text: string): boolean {

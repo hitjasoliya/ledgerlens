@@ -1,25 +1,16 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from 'react'
-import type { ChatMessage, ChatSession, FileEntry } from '../../types'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ChatSession } from '../../types'
 import {
-  appendMessage,
+  clearSession,
   createSession,
   deleteSession,
   getSession,
-  listSessions,
-  setContextFile,
+  mapChatSession,
+  mapChatSummary,
+  regenerateSession,
 } from '../../services/chatService'
-import { readJSON, StorageKeys, writeJSON } from '../../lib/storage'
-
-function readAll(ownerId: string) {
-  return readJSON<ChatSession[]>(StorageKeys.chats(ownerId), [])
-}
-
-function writeAll(ownerId: string, sessions: ChatSession[]) {
-  writeJSON(StorageKeys.chats(ownerId), sessions)
-}
-import { sendMessage, deleteConversation } from '../../lib/api'
-import { bus, Topics } from '../../lib/eventBus'
-import { deleteFile, listAllFiles } from '../../services/fileService'
+import { fetchChatSession, fetchChatSessions, sendMessage } from '../../lib/api'
+import { waitForDocumentsSearchable } from '../../services/fileService'
 
 type UseChatOptions = {
   ownerId: string
@@ -29,223 +20,370 @@ export type UseChatResult = {
   sessions: ChatSession[]
   activeSession: ChatSession | null
   loading: boolean
+  initialLoading: boolean
   error: string | null
   dismissError: () => void
-  selectSession: (id: string) => void
-  newSession: () => ChatSession
-  removeSession: (id: string) => void
-  send: (text: string, attachedFile?: FileEntry) => Promise<void>
+  selectSession: (id: string) => Promise<void>
+  newSession: (selectedDocumentIds: string[]) => Promise<ChatSession>
+  removeSession: (id: string) => Promise<void>
+  clearHistory: () => Promise<void>
+  send: (text: string) => Promise<void>
   regenerate: () => Promise<void>
-  attachContextFile: (fileId: string | undefined) => void
-}
-
-function ensureInitialSession(ownerId: string): ChatSession[] {
-  const existing = listSessions(ownerId)
-  if (existing.length > 0) return existing
-  createSession(ownerId)
-  return listSessions(ownerId)
-}
-
-type SessionsCacheRecord = { value: ChatSession[]; signature: string } | null
-const sessionsCache = new Map<string, SessionsCacheRecord>()
-
-function readSessionsSnapshot(ownerId: string): ChatSession[] {
-  const next = ensureInitialSession(ownerId)
-  const signature = JSON.stringify(next)
-  const existing = sessionsCache.get(ownerId)
-  if (existing && existing.signature === signature) return existing.value
-  sessionsCache.set(ownerId, { value: next, signature })
-  return next
-}
-
-function useSessionsStore(ownerId: string): ChatSession[] {
-  const { snapshot, subscribe } = useMemo(() => {
-    const topic = Topics.chats(ownerId)
-    return {
-      snapshot: () => readSessionsSnapshot(ownerId),
-      subscribe: (listener: () => void) =>
-        bus.subscribe(topic, () => {
-          sessionsCache.delete(ownerId)
-          listener()
-        }),
-    }
-  }, [ownerId])
-  return useSyncExternalStore(subscribe, snapshot, snapshot)
+  reloadSession: () => Promise<void>
 }
 
 export function useChat({ ownerId }: UseChatOptions): UseChatResult {
-  const sessions = useSessionsStore(ownerId)
-  const [activeId, setActiveId] = useState<string | null>(() => {
-    const initial = ensureInitialSession(ownerId)
-    return initial[0]?.id ?? null
-  })
+  const [sessions, setSessions] = useState<ChatSession[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeSession, setActiveSession] = useState<ChatSession | null>(null)
   const [loading, setLoading] = useState(false)
+  const [initialLoading, setInitialLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const activeSession = useMemo(
-    () => (activeId ? sessions.find((s) => s.id === activeId) ?? null : null),
-    [sessions, activeId],
-  )
+  // Generations to guard against race conditions and stale async completions
+  const ownerGenRef = useRef(0)
+  const sessionGenRef = useRef(0)
 
-  const selectSession = useCallback((id: string) => {
-    setActiveId(id)
-    setError(null)
-  }, [])
+  // Load session list on startup / owner change
+  useEffect(() => {
+    ownerGenRef.current += 1
+    const thisOwnerGen = ownerGenRef.current
+    const controller = new AbortController()
 
-  const newSession = useCallback(() => {
-    setError(null)
-    const created = createSession(ownerId)
-    setActiveId(created.id)
-    return created
-  }, [ownerId])
+    fetchChatSessions(controller.signal)
+      .then(async (loaded) => {
+        if (controller.signal.aborted || ownerGenRef.current !== thisOwnerGen) return
+        const mapped = loaded
+          .map((summary) => mapChatSummary(summary, ownerId))
+          .sort((a, b) => b.updatedAt - a.updatedAt)
 
-  const removeSession = useCallback(
-    (id: string) => {
-      const confirmDelete = window.confirm(
-        "Are you sure you want to permanently delete this chat session? This will remove all message history and delete all uploaded document embeddings associated with this session."
-      )
-      if (!confirmDelete) return
+        if (mapped.length === 0) {
+          // No chat yet: the UI asks for sources and creates the first chat with them.
+          setSessions([])
+        } else {
+          setSessions(mapped)
+          const first = mapped[0]
+          sessionGenRef.current += 1
+          const thisSessionGen = sessionGenRef.current
+          setActiveId(first.id)
 
-      // Wipes backend session chunks and history in background
-      deleteConversation(id).catch((err) => {
-        console.error("Failed to delete conversation on backend:", err)
+          try {
+            const detail = await fetchChatSession(first.id, controller.signal)
+            if (
+              controller.signal.aborted ||
+              ownerGenRef.current !== thisOwnerGen ||
+              sessionGenRef.current !== thisSessionGen
+            ) {
+              return
+            }
+            setActiveSession(mapChatSession(detail))
+          } catch {
+            if (
+              controller.signal.aborted ||
+              ownerGenRef.current !== thisOwnerGen ||
+              sessionGenRef.current !== thisSessionGen
+            ) {
+              return
+            }
+            setActiveSession(first)
+          }
+        }
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted && ownerGenRef.current === thisOwnerGen) {
+          setError(err instanceof Error ? err.message : String(err))
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted && ownerGenRef.current === thisOwnerGen) {
+          setInitialLoading(false)
+        }
       })
 
-      // Wipes client-side uploaded files for this session
-      listAllFiles()
-        .then((allFiles) => {
-          const sessionFiles = allFiles.filter((f) => f.sessionId === id)
-          sessionFiles.forEach((f) => deleteFile(f.id))
-        })
-        .catch((err) => {
-          console.error("Failed to delete session files:", err)
-        })
+    return () => {
+      controller.abort()
+    }
+  }, [ownerId])
 
+  const selectSession = useCallback(
+    async (id: string) => {
+      if (loading) return // Serialise mutations while busy
+      const thisOwnerGen = ownerGenRef.current
+      sessionGenRef.current += 1
+      const thisSessionGen = sessionGenRef.current
 
-      deleteSession(ownerId, id)
-      const remaining = listSessions(ownerId)
-      if (remaining.length === 0) {
-        const created = createSession(ownerId)
-        setActiveId(created.id)
+      setError(null)
+      const priorActive = activeSession
+
+      try {
+        const detail = await getSession(id)
+        if (
+          ownerGenRef.current !== thisOwnerGen ||
+          sessionGenRef.current !== thisSessionGen
+        ) {
+          return // Stale generation discarded
+        }
+        setActiveId(detail.id)
+        setActiveSession(detail)
+      } catch (err) {
+        if (
+          ownerGenRef.current !== thisOwnerGen ||
+          sessionGenRef.current !== thisSessionGen
+        ) {
+          return
+        }
+        // Do not leave mismatched activeId and activeSession on load failure
+        setActiveId(priorActive?.id ?? null)
+        setActiveSession(priorActive)
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    },
+    [loading, activeSession],
+  )
+
+  const reloadSession = useCallback(async () => {
+    if (!activeId) return
+    const thisOwnerGen = ownerGenRef.current
+    const thisSessionGen = sessionGenRef.current
+
+    try {
+      const detail = await getSession(activeId)
+      if (
+        ownerGenRef.current !== thisOwnerGen ||
+        sessionGenRef.current !== thisSessionGen
+      ) {
         return
       }
-      if (activeId === id) setActiveId(remaining[0].id)
+      setActiveSession(detail)
+      setSessions((prev) =>
+        prev.map((s) => (s.id === detail.id ? detail : s)),
+      )
+      setError(null)
+    } catch (err) {
+      if (
+        ownerGenRef.current !== thisOwnerGen ||
+        sessionGenRef.current !== thisSessionGen
+      ) {
+        return
+      }
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [activeId])
+
+  const newSession = useCallback(async (selectedDocumentIds: string[]): Promise<ChatSession> => {
+    if (loading) throw new Error('Cannot create session while request in flight')
+    const thisOwnerGen = ownerGenRef.current
+    sessionGenRef.current += 1
+    const thisSessionGen = sessionGenRef.current
+
+    setError(null)
+    const created = await createSession('New chat', selectedDocumentIds)
+    if (
+      ownerGenRef.current !== thisOwnerGen ||
+      sessionGenRef.current !== thisSessionGen
+    ) {
+      return created
+    }
+
+    setSessions((prev) => [created, ...prev])
+    setActiveId(created.id)
+    setActiveSession(created)
+    return created
+  }, [loading])
+
+  const removeSession = useCallback(
+    async (id: string) => {
+      if (loading) return
+      const confirmed = window.confirm(
+        'Are you sure you want to permanently delete this chat session? Message history will be deleted. (Uploaded documents will remain intact.)',
+      )
+      if (!confirmed) return
+
+      try {
+        await deleteSession(id)
+        const remaining = sessions.filter((s) => s.id !== id)
+        setSessions(remaining)
+
+        if (remaining.length === 0) {
+          // Last chat gone: the UI asks for sources before creating another.
+          setActiveId(null)
+          setActiveSession(null)
+          return
+        }
+
+        if (activeId === id) {
+          const next = remaining[0]
+          setActiveId(next.id)
+          const detail = await getSession(next.id)
+          setActiveSession(detail)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     },
-    [ownerId, activeId],
+    [sessions, activeId, loading],
   )
 
-  const attachContextFile = useCallback(
-    (fileId: string | undefined) => {
-      if (!activeId) return
-      setContextFile(ownerId, activeId, fileId)
-    },
-    [ownerId, activeId],
-  )
+  const clearHistory = useCallback(async () => {
+    if (!activeSession || loading) return
+    const confirmed = window.confirm(
+      'Clear all messages in this conversation? Document selection and lock state will be preserved.',
+    )
+    if (!confirmed) return
+
+    try {
+      await clearSession(activeSession.id)
+      const detail = await getSession(activeSession.id)
+      setActiveSession(detail)
+      setSessions((prev) =>
+        prev.map((s) => (s.id === detail.id ? detail : s)),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [activeSession, loading])
 
   const dismissError = useCallback(() => {
     setError(null)
   }, [])
 
   const send = useCallback(
-    async (text: string, attachedFile?: FileEntry) => {
-      if (!activeId) return
+    async (text: string) => {
+      if (!activeSession || loading) return
       const trimmed = text.trim()
       if (!trimmed) return
+
+      const thisOwnerGen = ownerGenRef.current
+      const thisSessionGen = sessionGenRef.current
+      const targetSessionId = activeSession.id
 
       setError(null)
       setLoading(true)
 
-      const userMsg: Omit<ChatMessage, 'id' | 'timestamp'> = {
-        role: 'user',
-        content: trimmed,
-        attachedFile: attachedFile
-          ? { name: attachedFile.filename, fileId: attachedFile.id }
-          : undefined,
-      }
-      appendMessage(ownerId, activeId, userMsg)
+      let questionAccepted = false
 
       try {
-        const session = getSession(ownerId, activeId)
-        if (!session) throw new Error('Active session not found')
-        const res = await sendMessage(trimmed, ownerId, session.id)
-        appendMessage(ownerId, activeId, {
-          role: 'assistant',
-          content: res.answer,
-          citations: res.citations,
-          chunksUsed: res.chunks_used,
-        })
+        // Selected sources may still be indexing; wait until they are searchable.
+        if (activeSession.selectedDocumentIds.length > 0) {
+          await waitForDocumentsSearchable(activeSession.selectedDocumentIds)
+        }
+
+        // Submit question to authoritative backend
+        await sendMessage(trimmed, targetSessionId)
+        questionAccepted = true
+
+    
+        // Refresh authoritative history
+        try {
+          const reloaded = await getSession(targetSessionId)
+          if (
+            ownerGenRef.current === thisOwnerGen &&
+            sessionGenRef.current === thisSessionGen
+          ) {
+            setActiveSession(reloaded)
+            setSessions((prev) =>
+              prev.map((s) => (s.id === reloaded.id ? reloaded : s)),
+            )
+          }
+        } catch (reloadErr) {
+          // Question was accepted on backend! Do not re-throw as unsent (avoids duplicate prompt)
+          const msg =
+            reloadErr instanceof Error ? reloadErr.message : String(reloadErr)
+          setError(
+            `Question accepted, but history reload failed: ${msg}. Click reload to refresh.`,
+          )
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        setError(message)
-        appendMessage(ownerId, activeId, {
-          role: 'assistant',
-          content: `Sorry, something went wrong: ${message}`,
-        })
+        if (questionAccepted) {
+          return
+        }
+
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(msg)
+
+        // Backend locks first accepted question before provider generation;
+        // if 503 or error occurs during chat, refresh authoritative state so
+        // UI does not stay on an outdated unlocked revision/selection state.
+        try {
+          const fresh = await getSession(targetSessionId)
+          if (
+            ownerGenRef.current === thisOwnerGen &&
+            sessionGenRef.current === thisSessionGen
+          ) {
+            setActiveSession(fresh)
+            setSessions((prev) =>
+              prev.map((s) => (s.id === fresh.id ? fresh : s)),
+            )
+          }
+        } catch {
+          // ignore reload error during failure recovery
+        }
+
+        // Re-throw so the composer keeps the draft
+        throw err
       } finally {
-        setLoading(false)
+        if (ownerGenRef.current === thisOwnerGen) {
+          setLoading(false)
+        }
       }
     },
-    [ownerId, activeId],
+    [activeSession, loading],
   )
 
   const regenerate = useCallback(async () => {
-    if (!activeId) return
-    const session = getSession(ownerId, activeId)
-    if (!session || session.messages.length === 0) return
+    if (!activeSession || loading) return
+    const assistantMsgs = activeSession.messages.filter(
+      (m) => m.role === 'assistant',
+    )
+    if (assistantMsgs.length === 0) return
+    const lastAssistant = assistantMsgs[assistantMsgs.length - 1]
 
-    // Find last user message
-    const lastUserIdx = [...session.messages].reverse().findIndex(m => m.role === 'user')
-    if (lastUserIdx === -1) return
+    const thisOwnerGen = ownerGenRef.current
+    const thisSessionGen = sessionGenRef.current
+    const targetSessionId = activeSession.id
 
-    const actualIdx = session.messages.length - 1 - lastUserIdx
-    const lastUserMsg = session.messages[actualIdx]
-
-    // Remove all messages after the last user message
-    const sessions = readAll(ownerId)
-    const si = sessions.findIndex(s => s.id === activeId)
-    if (si !== -1) {
-      sessions[si] = {
-        ...session,
-        messages: session.messages.slice(0, actualIdx + 1),
-        updatedAt: Date.now(),
-      }
-      writeAll(ownerId, sessions)
-    }
-
-    // Re-send
     setError(null)
     setLoading(true)
+
     try {
-      const res = await sendMessage(lastUserMsg.content, ownerId, session.id)
-      appendMessage(ownerId, activeId, {
-        role: 'assistant',
-        content: res.answer,
-        citations: res.citations,
-        chunksUsed: res.chunks_used,
-      })
+      await regenerateSession(targetSessionId, lastAssistant.id)
+      const reloaded = await getSession(targetSessionId)
+      if (
+        ownerGenRef.current === thisOwnerGen &&
+        sessionGenRef.current === thisSessionGen
+      ) {
+        setActiveSession(reloaded)
+        setSessions((prev) =>
+          prev.map((s) => (s.id === reloaded.id ? reloaded : s)),
+        )
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setError(message)
-      appendMessage(ownerId, activeId, {
-        role: 'assistant',
-        content: `Error: ${message}`,
-      })
+      if (
+        ownerGenRef.current === thisOwnerGen &&
+        sessionGenRef.current === thisSessionGen
+      ) {
+        setError(err instanceof Error ? err.message : String(err))
+      }
     } finally {
-      setLoading(false)
+      if (ownerGenRef.current === thisOwnerGen) {
+        setLoading(false)
+      }
     }
-  }, [ownerId, activeId])
+  }, [activeSession, loading])
 
   return {
     sessions,
     activeSession,
     loading,
+    initialLoading,
     error,
     dismissError,
     selectSession,
     newSession,
     removeSession,
+    clearHistory,
     send,
     regenerate,
-    attachContextFile,
+    reloadSession,
   }
 }
