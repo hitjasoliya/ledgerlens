@@ -1,80 +1,113 @@
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(20, 18, 14, 0.55);
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  z-index: 100;
-  animation: fadeIn 0.15s ease;
-  backdrop-filter: blur(4px);
+  padding: 16px;
+  background: var(--overlay);
+  transition: opacity 200ms ease;
+
+  @starting-style {
+    opacity: 0;
+  }
 }
 
 .modal {
-  background: var(--color-bg-elevated);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
   width: 100%;
-  max-height: 90vh;
+  max-height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
-  animation: fadeSlideIn 0.2s ease;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  transition: opacity 200ms var(--ease-out), transform 200ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 .modal--sm { max-width: 420px; }
-.modal--md { max-width: 560px; }
-.modal--lg { max-width: 760px; }
+.modal--md { max-width: 520px; }
+.modal--lg { max-width: 720px; }
 
 .modal__header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  padding: 20px 24px 12px;
-  border-bottom: 1px solid var(--color-border);
+  padding: 20px 20px 0 24px;
 }
 
 .modal__title {
-  font-size: 17px;
-  letter-spacing: -0.02em;
+  font-size: 18px;
+  font-weight: 600;
 }
 
 .modal__desc {
-  font-size: 13px;
-  color: var(--color-text-muted);
   margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-muted);
 }
 
 .modal__close {
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--color-text-muted);
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
-  transition: background 0.15s ease, color 0.15s ease;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: background-color 120ms ease;
 }
 
-.modal__close:hover {
-  background: var(--color-bg-subtle);
-  color: var(--color-text);
-}
+.modal__close:hover { background: var(--bg-hover); color: var(--text); }
 
 .modal__body {
   padding: 20px 24px;
   overflow-y: auto;
-  flex: 1;
 }
 
 .modal__footer {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--color-border);
-  background: var(--color-bg-subtle);
+  padding: 0 24px 20px;
+}
+
+/* Phones: present as a bottom sheet that rises from the edge it belongs to. */
+@media (max-width: 640px) {
+  .modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modal,
+  .modal--sm,
+  .modal--md,
+  .modal--lg {
+    max-width: none;
+    max-height: 88vh;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+    transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1);
+
+    @starting-style {
+      opacity: 1;
+      transform: translateY(100%);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal {
+    @starting-style {
+      transform: none;
+    }
+  }
 }
