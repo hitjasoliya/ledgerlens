@@ -1,0 +1,28 @@
+# Development Compose Override
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# Exposes internal datastores and microservices strictly on private loopback 127.0.0.1.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  elasticsearch:
+    ports:
+      - "127.0.0.1:9200:9200"
+
+  identity:
+    ports:
+      - "127.0.0.1:8001:8001"
+
+  ingestion:
+    ports:
+      - "127.0.0.1:8002:8002"
+
+  rag:
+    ports:
+      - "127.0.0.1:8003:8003"

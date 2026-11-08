@@ -1,28 +1,21 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ledgerlens-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: ledgerlens
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in deployment environment}
+      POSTGRES_DB: ${POSTGRES_DB:-ledgerlens}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: ledgerlens-redis
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory-policy", "noeviction"]
     volumes:
       - redis_data:/data
     healthcheck:
@@ -33,13 +26,10 @@ services:
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
-    container_name: ledgerlens-elasticsearch
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
       - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
@@ -48,35 +38,76 @@ services:
       timeout: 5s
       retries: 5
 
+  migration:
+    build:
+      context: .
+      dockerfile: services/identity/Dockerfile
+    command: ["python", "-m", "common.migrate", "check"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ledgerlens}
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+      UPLOAD_DIR: /app/data/uploads
+      ENV: ${ENV:-production}
+    volumes:
+      - uploads_data:/app/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   identity:
     build:
       context: .
       dockerfile: services/identity/Dockerfile
-    container_name: ledgerlens-identity
     environment:
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ledgerlens}
       REDIS_URL: redis://redis:6379/0
-      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
-    ports:
-      - "8001:8001"
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD}
+      ENV: ${ENV:-production}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   ingestion:
     build:
       context: .
       dockerfile: services/ingestion/Dockerfile
-    container_name: ledgerlens-ingestion
     environment:
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ledgerlens}
       REDIS_URL: redis://redis:6379/0
       ES_HOST: http://elasticsearch:9200
-      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
-    ports:
-      - "8002:8002"
+      ES_INDEX: ${ES_INDEX:-ledgerlens_chunks_v2}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma}
+      EMBEDDING_DIMS: ${EMBEDDING_DIMS:-768}
+      JWT_SECRET: ${JWT_SECRET}
+      UPLOAD_DIR: /app/data/uploads
+      ENV: ${ENV:-production}
+      UPLOAD_MAX_PAGES: ${UPLOAD_MAX_PAGES:-40}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-20971520}
+      INGESTION_WORKERS: ${INGESTION_WORKERS:-1}
+      OMP_NUM_THREADS: ${INGESTION_CPUS:-2}
+    # Parsing is CPU- and memory-heavy; cap it so one document can't starve the host.
+    cpus: ${INGESTION_CPUS:-2}
+    mem_limit: ${INGESTION_MEMORY:-4g}
+    volumes:
+      - uploads_data:/app/data/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8002/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,20 +115,30 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   rag:
     build:
       context: .
       dockerfile: services/rag/Dockerfile
-    container_name: ledgerlens-rag
     environment:
-      DATABASE_URL: postgresql://postgres:postgrespassword@postgres:5432/ledgerlens
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ledgerlens}
       REDIS_URL: redis://redis:6379/0
       ES_HOST: http://elasticsearch:9200
-      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+      ES_INDEX: ${ES_INDEX:-ledgerlens_chunks_v2}
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-embeddinggemma}
+      EMBEDDING_DIMS: ${EMBEDDING_DIMS:-768}
+      JWT_SECRET: ${JWT_SECRET}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    ports:
-      - "8003:8003"
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      ENV: ${ENV:-production}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,19 +146,29 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
 
   gateway:
     build:
       context: .
       dockerfile: services/gateway/Dockerfile
-    container_name: ledgerlens-gateway
     environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ledgerlens}
+      REDIS_URL: redis://redis:6379/0
       IDENTITY_SERVICE_URL: http://identity:8001
       INGESTION_SERVICE_URL: http://ingestion:8002
       RAG_SERVICE_URL: http://rag:8003
-      JWT_SECRET: ledgerlens-super-secret-key-change-in-production-2026
+      JWT_SECRET: ${JWT_SECRET}
+      CORS_ORIGINS: ${CORS_ORIGINS:-[]}
+      ENV: ${ENV:-production}
     ports:
-      - "8000:8000"
+      - "${GATEWAY_BIND_HOST:-127.0.0.1}:${GATEWAY_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     depends_on:
       - identity
       - ingestion
@@ -127,9 +178,8 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
-    container_name: ledgerlens-frontend
     ports:
-      - "3000:80"
+      - "${FRONTEND_BIND_HOST:-127.0.0.1}:${FRONTEND_PORT:-3000}:80"
     depends_on:
       - gateway
 
@@ -137,3 +187,4 @@ volumes:
   postgres_data:
   redis_data:
   es_data:
+  uploads_data:

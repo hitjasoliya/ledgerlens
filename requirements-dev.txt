@@ -1,0 +1,5 @@
+-r requirements-ingestion.txt
+-r requirements-rag.txt
+pytest>=8,<10
+reportlab>=4,<6
+pip-audit>=2,<3

@@ -1,0 +1,15 @@
+-r requirements.txt
+# Docling is the only PDF parser. PDFium validates uploads, not a parsing fallback.
+docling>=2.118,<3
+pypdfium2>=5.7,<6
+tiktoken>=0.7,<1
+
+# Official PyTorch CPU wheels (Linux ARM64 / AMD64) and native macOS ARM64 wheel
+torch @ https://download.pytorch.org/whl/cpu/torch-2.15.0%2Bcpu-cp313-cp313-manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'
+torch @ https://download.pytorch.org/whl/cpu/torch-2.15.0%2Bcpu-cp313-cp313-manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'
+torch==2.15.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'
+
+# Official TorchVision CPU wheels (Linux ARM64 / AMD64) and native macOS ARM64 wheel
+torchvision @ https://download.pytorch.org/whl/cpu/torchvision-0.29.2%2Bcpu-py3-none-manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64'
+torchvision @ https://download.pytorch.org/whl/cpu/torchvision-0.29.2%2Bcpu-py3-none-manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64'
+torchvision==0.29.2 ; sys_platform == 'darwin' and platform_machine == 'arm64'

@@ -1,19 +1,23 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    fontconfig \
+    fonts-liberation \
     libgomp1 \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt pydantic-settings
+COPY requirements-ingestion.lock /app/requirements-ingestion.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements-ingestion.lock
 
 COPY packages/common /app/packages/common
 COPY services/ingestion /app/services/ingestion
 
-ENV PYTHONPATH="/app/packages/common/src:/app/services/ingestion"
+ENV PYTHONPATH="/app:/app/packages/common/src:/app/services/ingestion"
 
 EXPOSE 8002
 

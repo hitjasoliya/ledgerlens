@@ -1,14 +1,14 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt pydantic-settings
+COPY requirements-rag.lock /app/requirements-rag.lock
+RUN pip install --no-cache-dir --require-hashes -r requirements-rag.lock
 
 COPY packages/common /app/packages/common
 COPY services/rag /app/services/rag
 
-ENV PYTHONPATH="/app/packages/common/src:/app/services/rag"
+ENV PYTHONPATH="/app:/app/packages/common/src:/app/services/rag"
 
 EXPOSE 8003
 

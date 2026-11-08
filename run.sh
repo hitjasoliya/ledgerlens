@@ -2,34 +2,47 @@
 
 # Prevent sourcing the script to protect the user's terminal session
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
-    echo -e "\033[31mError: This script must be executed, not sourced. Run it as:\033[0m"
-    echo "  ./run.sh"
+    echo "Error: run.sh must be executed directly, not sourced."
     return 1 2>/dev/null || exit 1
 fi
+
+set -e
+# Give each launched job its own process group, including parser/Vite children.
+set -m
+
+# Anchor strictly to the script repository directory
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT_DIR"
 
 # Visual Header
 echo -e "\033[36m==================================================\033[0m"
 echo -e "\033[36m      LedgerLens — Microservices Runner          \033[0m"
 echo -e "\033[36m==================================================\033[0m"
 
-# 1. Freeing & Checking Ports
-echo -e "\033[34m[1/5] Freeing ports (8000, 8001, 8002, 8003, 5173)...\033[0m"
+# 1. Checking Ports (Own only child processes; fail on conflict, never kill unrelated)
+echo -e "\033[34m[1/6] Checking ports (8000, 8001, 8002, 8003, 5173)...\033[0m"
+ports_conflict=0
 for port in 8000 8001 8002 8003 5173; do
-    pids=$(lsof -ti :$port 2>/dev/null)
+    pids=$(lsof -ti :$port 2>/dev/null || true)
     if [ -n "$pids" ]; then
-        echo -e "\033[33mFreeing port $port (killing PID(s): $pids)...\033[0m"
-        kill -9 $pids 2>/dev/null || true
-        sleep 0.5
+        echo -e "\033[31mError: Port $port is already occupied by PID(s): $pids\033[0m"
+        ports_conflict=1
     fi
 done
-echo "Ports 8000, 8001, 8002, 8003, 5173 are free."
 
-# 2. Docker Compose Detection
-echo -e "\033[34m[2/5] Checking Docker daemon and starting databases...\033[0m"
+if [ $ports_conflict -ne 0 ]; then
+    echo -e "\033[31mPort conflict detected. LedgerLens launcher will NOT terminate unrelated processes.\033[0m"
+    echo -e "\033[33mTroubleshooting: Stop conflicting processes or configure alternative ports before retrying.\033[0m"
+    exit 1
+fi
+echo "Ports 8000, 8001, 8002, 8003, 5173 are available."
+
+# 2. Docker Compose Detection for Backing Datastores
+echo -e "\033[34m[2/6] Checking Docker daemon and starting datastores...\033[0m"
 if ! docker info >/dev/null 2>&1; then
-    echo -e "\033[33mWarning: Docker daemon is not running. Launching local fallback mode.\033[0m"
+    echo -e "\033[33mNotice: Docker daemon is not active. Expecting datastores on configured host ports.\033[0m"
 else
-    # Detect docker-compose command
+    DOCKER_COMPOSE=""
     if docker compose version >/dev/null 2>&1; then
         DOCKER_COMPOSE="docker compose"
     elif docker-compose version >/dev/null 2>&1; then
@@ -37,82 +50,120 @@ else
     fi
 
     if [ -n "$DOCKER_COMPOSE" ]; then
-        # Spin up postgres, redis, elasticsearch database services
-        $DOCKER_COMPOSE up -d postgres redis elasticsearch 2>/dev/null || true
+        echo "Starting postgres, redis, and elasticsearch using dev compose override..."
+        if ! $DOCKER_COMPOSE -f docker-compose.yml -f docker-compose.dev.yml up -d postgres redis elasticsearch; then
+            echo -e "\033[31mError: Failed to start required Docker datastores.\033[0m"
+            exit 1
+        fi
     fi
 fi
 
 # 3. Environment & Python Setup
-echo -e "\033[34m[3/5] Detecting Python and Node environment...\033[0m"
-PYTHON_ENV="$(which python3)"
-UVICORN_ENV="$(which uvicorn 2>/dev/null || echo "uvicorn")"
-
-if [ -f "/opt/miniconda3/bin/uvicorn" ]; then
-    UVICORN_ENV="/opt/miniconda3/bin/uvicorn"
+echo -e "\033[34m[3/6] Detecting Python and Node environment...\033[0m"
+if [ -z "${PYTHON_BIN:-}" ]; then
+    PYTHON_BIN="$(command -v python3 || command -v python || true)"
 fi
-
-echo "Using Python executable: $PYTHON_ENV"
-echo "Using Uvicorn executable: $UVICORN_ENV"
-
-# Verify node/npm
-if ! command -v npm >/dev/null 2>&1; then
-    echo -e "\033[31mError: Node.js and npm are not installed.\033[0m"
+if [ -z "$PYTHON_BIN" ] || ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo -e "\033[31mError: Python executable not found.\033[0m"
     exit 1
 fi
-echo "Node/NPM environment is ready."
 
-# 4. Ollama Check
-echo -e "\033[34m[4/5] Checking Ollama setup...\033[0m"
-if curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags >/dev/null 2>&1; then
-    echo "Ollama is running on http://localhost:11434."
-else
-    echo -e "\033[33mWarning: Ollama is not running. Hash fallback embeddings will be used.\033[0m"
+if ! "$PYTHON_BIN" -m uvicorn --version >/dev/null 2>&1; then
+    echo -e "\033[31mError: uvicorn module not found in $PYTHON_BIN environment.\033[0m"
+    exit 1
 fi
 
-# 5. Concurrent Microservices Launch
-echo -e "\033[34m[5/5] Launching LedgerLens Microservices...\033[0m"
-echo -e "\033[32mServices starting! Press Ctrl+C to stop all services.\033[0m"
-echo -e "--------------------------------------------------"
+if ! command -v npm >/dev/null 2>&1; then
+    echo -e "\033[31mError: npm is not installed or not in PATH.\033[0m"
+    exit 1
+fi
 
-cleanup() {
-    echo -e "\n\033[33mShutting down all services...\033[0m"
-    trap - INT TERM HUP
-    for port in 8000 8001 8002 8003 5173; do
-        pids=$(lsof -ti :$port 2>/dev/null)
-        if [ -n "$pids" ]; then
-            kill -9 $pids 2>/dev/null || true
-        fi
-    done
-    exit 0
-}
-trap cleanup INT TERM HUP
-
-ROOT_DIR="$(pwd)"
+echo "Using Python executable: $PYTHON_BIN"
 export PYTHONPATH="$ROOT_DIR/packages/common/src:$ROOT_DIR"
 
-# Start Identity Service (8001)
-($UVICORN_ENV services.identity.main:app --port 8001) 2>&1 | while read -r line; do
-    echo -e "\033[33m[Identity :8001]\033[0m $line"
-done &
+# 4. Database Schema Check (Check current/fresh DB; upgrade requires explicit operator command)
+echo -e "\033[34m[4/6] Verifying database schema readiness...\033[0m"
+if ! "$PYTHON_BIN" -m common.migrate check; then
+    echo -e "\033[31mError: Database schema check failed.\033[0m"
+    echo -e "\033[33mNotice: the database uses an older schema. LedgerLens keeps no upgrade path; wipe the database, search index, and uploads, then start again.\033[0m"
+    exit 1
+fi
+echo "Database schema verified."
 
-# Start Ingestion Service (8002)
-($UVICORN_ENV services.ingestion.main:app --port 8002) 2>&1 | while read -r line; do
-    echo -e "\033[34m[Ingestion :8002]\033[0m $line"
-done &
+# 5. Ollama Status Check
+echo -e "\033[34m[5/6] Checking Ollama setup...\033[0m"
+ollama_code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 2 http://localhost:11434/api/tags 2>/dev/null || echo "000")
+if [ "$ollama_code" = "200" ]; then
+    echo "Ollama server is active."
+else
+    echo -e "\033[33mNotice: Ollama not reachable at http://localhost:11434 (HTTP $ollama_code). Local embeddings require Ollama.\033[0m"
+fi
 
-# Start RAG Service (8003)
-($UVICORN_ENV services.rag.main:app --port 8003) 2>&1 | while read -r line; do
-    echo -e "\033[35m[RAG :8003]\033[0m $line"
-done &
+# 6. Launch Microservices and Own Child PIDs
+echo -e "\033[34m[6/6] Launching LedgerLens Microservices on private loopback...\033[0m"
 
-# Start Gateway Service (8000)
-($UVICORN_ENV services.gateway.main:app --port 8000) 2>&1 | while read -r line; do
-    echo -e "\033[36m[Gateway :8000]\033[0m $line"
-done &
+CHILD_PIDS=()
 
-# Start Frontend (5173)
-(cd frontend && exec npm run dev) 2>&1 | while read -r line; do
-    echo -e "\033[32m[Frontend :5173]\033[0m $line"
-done &
+cleanup() {
+    echo -e "\n\033[33mShutting down launcher-owned processes...\033[0m"
+    trap - INT TERM HUP EXIT
+    for pid in "${CHILD_PIDS[@]}"; do
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill -TERM "$pid" 2>/dev/null || true
+        fi
+    done
 
+    # Bounded wait for graceful shutdown (5s)
+    for _ in {1..50}; do
+        any_alive=0
+        for pid in "${CHILD_PIDS[@]}"; do
+            if [ -n "$pid" ] && kill -0 -- "-$pid" 2>/dev/null; then
+                any_alive=1
+                break
+            fi
+        done
+        if [ $any_alive -eq 0 ]; then
+            break
+        fi
+        sleep 0.1
+    done
+
+    # Reap only process groups created by these monitored jobs. This also stops
+    # descendants when a parent exited before its parser or frontend child.
+    for pid in "${CHILD_PIDS[@]}"; do
+        if [ -n "$pid" ] && kill -0 -- "-$pid" 2>/dev/null; then
+            kill -KILL -- "-$pid" 2>/dev/null || true
+        fi
+        wait "$pid" 2>/dev/null || true
+    done
+    echo -e "\033[32mLauncher-owned process groups stopped.\033[0m"
+}
+
+trap cleanup INT TERM HUP EXIT
+
+# Launch Identity Service (8001)
+"$PYTHON_BIN" -m uvicorn services.identity.main:app --host 127.0.0.1 --port 8001 &
+CHILD_PIDS+=($!)
+
+# Launch Ingestion Service (8002)
+"$PYTHON_BIN" -m uvicorn services.ingestion.main:app --host 127.0.0.1 --port 8002 &
+CHILD_PIDS+=($!)
+
+# Launch RAG Service (8003)
+"$PYTHON_BIN" -m uvicorn services.rag.main:app --host 127.0.0.1 --port 8003 &
+CHILD_PIDS+=($!)
+
+# Launch Gateway Service (8000)
+"$PYTHON_BIN" -m uvicorn services.gateway.main:app --host 127.0.0.1 --port 8000 &
+CHILD_PIDS+=($!)
+
+# Launch Frontend (5173)
+(cd frontend && exec npm run dev -- --host 127.0.0.1 --port 5173) &
+CHILD_PIDS+=($!)
+
+echo -e "\033[32mServices launching! Owned PIDs: ${CHILD_PIDS[*]}\033[0m"
+echo -e "\033[32mPress Ctrl+C to stop owned services cleanly.\033[0m"
+echo -e "--------------------------------------------------"
+
+# Wait for all owned children
 wait
