@@ -1,59 +1,52 @@
 from __future__ import annotations
+
 import logging
-import sys
-import uuid
-from pathlib import Path
-from typing import List, Optional
+from contextlib import asynccontextmanager
 
-root_dir = Path(__file__).resolve().parent.parent.parent
-common_path = str(root_dir / "packages" / "common" / "src")
-if common_path not in sys.path:
-    sys.path.insert(0, common_path)
-
-from fastapi import FastAPI, Depends, HTTPException, status, Header
+from fastapi import Depends, FastAPI, HTTPException, Query, status
+import requests
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from common.database import engine, Base, get_db
-from common.models import ChatSessionModel, ChatMessageModel
+from common.auth import get_current_user, get_redis_client
+from common.config import settings
+from common.http import configure_validation_errors, page_params
+import common.database
+from common.database import get_db
+from common.models import User
 from common.schemas import (
-    ChatRequest,
+    ChatMessageRequest,
     ChatResponse,
-    ChatSessionResponse,
     ChatSessionCreate,
-    ChatMessageResponse,
-    Citation,
-    ClearChatResponse,
+    ChatSessionResponse,
+    ChatSessionSummary,
     HealthResponse,
+    Page,
+    RegenerateRequest,
+    ResourceId,
 )
-from common.auth import decode_access_token
+
 try:
     from engine import RAGEngine
 except ImportError:
     from services.rag.engine import RAGEngine
 
-Base.metadata.create_all(bind=engine)
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="LedgerLens RAG Service")
 rag_engine = RAGEngine()
 
 
-def extract_user_credentials(
-    authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None),
-) -> tuple[str, str]:
-    if x_user_id:
-        return x_user_id, x_user_role or "employee"
-    if authorization and authorization.startswith("Bearer "):
-        try:
-            token = authorization.split(" ")[1]
-            payload = decode_access_token(token)
-            user_id = payload.get("id") or payload.get("sub", "guest")
-            user_role = payload.get("role", "employee")
-            return user_id, user_role
-        except Exception:
-            pass
-    return "guest", "employee"
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if hasattr(common.database, "initialize_database"):
+        common.database.initialize_database()
+    yield
+    rag_engine.close()
+
+
+
+app = FastAPI(title="LedgerLens RAG Service", lifespan=lifespan)
+configure_validation_errors(app)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -61,157 +54,133 @@ def health():
     return HealthResponse(status="ok")
 
 
-@app.post("/api/chat", response_model=ChatResponse)
-def chat(
-    body: ChatRequest,
-    authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None),
-    db: Session = Depends(get_db),
-):
-    auth_user_id, auth_user_role = extract_user_credentials(authorization, x_user_id, x_user_role)
-    effective_user_id = body.user_id if (body.user_id and body.user_id != "guest") else auth_user_id
+@app.get("/ready")
+def ready(db: Session = Depends(get_db)):
+    status_details = {}
+    is_ready = True
 
-    res = rag_engine.chat(
-        db=db,
-        question=body.message,
-        user_id=effective_user_id,
-        user_role=auth_user_role,
-        session_id=body.session_id or "default_session",
-    )
-    return ChatResponse(
-        answer=res["answer"],
-        citations=[Citation(**c) for c in res.get("citations", [])],
-        chunks_used=res.get("chunks_used", 0),
-    )
+    # 1. SQL Database probe
+    try:
+        db.execute(text("SELECT 1"))
+        status_details["database"] = "connected"
+    except Exception as exc:
+        logger.warning("Database readiness probe failed: %s", type(exc).__name__)
+        status_details["database"] = "unavailable"
+        is_ready = False
 
+    # 2. Redis revocation probe
+    try:
+        redis_client = get_redis_client()
+        redis_client.ping()
+        status_details["redis"] = "connected"
+    except Exception as exc:
+        logger.warning("Redis readiness probe failed: %s", type(exc).__name__)
+        status_details["redis"] = "unavailable"
+        is_ready = False
 
-@app.get("/api/chat/sessions", response_model=List[ChatSessionResponse])
-def get_sessions(
-    user_id: Optional[str] = None,
-    authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None),
-    db: Session = Depends(get_db),
-):
-    auth_user_id, _ = extract_user_credentials(authorization, x_user_id, x_user_role)
-    effective_user_id = user_id or auth_user_id
+    # 3. Elasticsearch probe
+    try:
+        if rag_engine.es_client.is_available():
+            status_details["elasticsearch"] = "connected"
+        else:
+            status_details["elasticsearch"] = "unavailable"
+            is_ready = False
+    except Exception as exc:
+        logger.warning("Elasticsearch readiness probe failed: %s", type(exc).__name__)
+        status_details["elasticsearch"] = "unavailable"
+        is_ready = False
 
-    sessions = (
-        db.query(ChatSessionModel)
-        .filter(ChatSessionModel.user_id == effective_user_id)
-        .order_by(ChatSessionModel.updated_at.desc())
-        .all()
-    )
-    res = []
-    for s in sessions:
-        ordered = sorted(s.messages, key=lambda m: m.created_at)
-        msgs = [
-            ChatMessageResponse(
-                id=m.id,
-                role=m.role,
-                content=m.content,
-                citations=[Citation(**c) for c in (m.citations or [])],
-                created_at=int(m.created_at.timestamp() * 1000),
-            )
-            for m in ordered
-        ]
-        res.append(
-            ChatSessionResponse(
-                id=s.id,
-                title=s.title,
-                user_id=s.user_id,
-                created_at=int(s.created_at.timestamp() * 1000),
-                updated_at=int(s.updated_at.timestamp() * 1000),
-                context_file_id=s.context_file_id,
-                messages=msgs,
-            )
+    if rag_engine.embedder.is_available():
+        status_details["embedding_service"] = "available"
+    else:
+        status_details["embedding_service"] = "unavailable"
+        is_ready = False
+
+    # Metadata probes are not paid generation requests.
+    if rag_engine.generator.is_available():
+        status_details["gemini"] = "available"
+    else:
+        status_details["gemini"] = "unavailable"
+        is_ready = False
+
+    if not is_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"status": "degraded", "dependencies": status_details},
         )
-    return res
+    return {"status": "ready", "dependencies": status_details}
 
 
-@app.post("/api/chat/sessions", response_model=ChatSessionResponse)
+@app.get("/api/chat/sessions", response_model=Page[ChatSessionSummary])
+def list_sessions(
+    page: tuple[int, int] = Depends(page_params),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    limit, offset = page
+    return rag_engine.list_sessions(db=db, current_user=current_user, limit=limit, offset=offset)
+
+
+@app.post("/api/chat/sessions", response_model=ChatSessionResponse, status_code=status.HTTP_201_CREATED)
 def create_session(
     body: ChatSessionCreate,
-    user_id: Optional[str] = None,
-    authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None),
-    x_user_role: Optional[str] = Header(None),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    auth_user_id, _ = extract_user_credentials(authorization, x_user_id, x_user_role)
-    effective_user_id = user_id or auth_user_id
-
-    sess_id = str(uuid.uuid4())
-    sess = ChatSessionModel(
-        id=sess_id,
-        user_id=effective_user_id,
-        title=body.title or "New Chat",
-        context_file_id=body.context_file_id,
-    )
-    db.add(sess)
-    db.commit()
-    db.refresh(sess)
-
-    return ChatSessionResponse(
-        id=sess.id,
-        title=sess.title,
-        user_id=sess.user_id,
-        created_at=int(sess.created_at.timestamp() * 1000),
-        updated_at=int(sess.updated_at.timestamp() * 1000),
-        context_file_id=sess.context_file_id,
-        messages=[],
+    return rag_engine.create_session(
+        db=db,
+        title=body.title,
+        selected_document_ids=body.selected_document_ids,
+        current_user=current_user,
     )
 
 
 @app.get("/api/chat/sessions/{session_id}", response_model=ChatSessionResponse)
-def get_session(session_id: str, db: Session = Depends(get_db)):
-    sess = db.query(ChatSessionModel).filter(ChatSessionModel.id == session_id).first()
-    if not sess:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Session not found",
-        )
-    ordered = sorted(sess.messages, key=lambda m: m.created_at)
-    msgs = [
-        ChatMessageResponse(
-            id=m.id,
-            role=m.role,
-            content=m.content,
-            citations=[Citation(**c) for c in (m.citations or [])],
-            created_at=int(m.created_at.timestamp() * 1000),
-        )
-        for m in ordered
-    ]
-    return ChatSessionResponse(
-        id=sess.id,
-        title=sess.title,
-        user_id=sess.user_id,
-        created_at=int(sess.created_at.timestamp() * 1000),
-        updated_at=int(sess.updated_at.timestamp() * 1000),
-        context_file_id=sess.context_file_id,
-        messages=msgs,
+def get_session(
+    session_id: ResourceId,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return rag_engine.get_session(db=db, session_id=session_id, current_user=current_user)
+
+
+@app.delete("/api/chat/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_session(
+    session_id: ResourceId,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rag_engine.delete_chat(db=db, session_id=session_id, current_user=current_user)
+
+
+@app.post("/api/chat/sessions/{session_id}/messages", response_model=ChatResponse)
+def send_message(
+    session_id: ResourceId,
+    body: ChatMessageRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return rag_engine.chat(
+        db=db, question=body.message, current_user=current_user, session_id=session_id
     )
 
 
-@app.post("/api/chat/clear", response_model=ClearChatResponse)
-def clear_chat(session_id: str = "default_session", db: Session = Depends(get_db)):
-    db.query(ChatMessageModel).filter(
-        ChatMessageModel.session_id == session_id
-    ).delete()
-    db.commit()
-    return ClearChatResponse(ok=True)
+@app.delete("/api/chat/sessions/{session_id}/messages", status_code=status.HTTP_204_NO_CONTENT)
+def clear_messages(
+    session_id: ResourceId,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rag_engine.clear_chat(db=db, session_id=session_id, current_user=current_user)
 
 
-@app.post("/api/chat/delete", response_model=ClearChatResponse)
-def delete_chat(session_id: str = "default_session", db: Session = Depends(get_db)):
-    sess = db.query(ChatSessionModel).filter(ChatSessionModel.id == session_id).first()
-    if sess:
-        db.delete(sess)
-        db.commit()
-    return ClearChatResponse(ok=True)
-
-
-@app.post("/api/session/end", response_model=ClearChatResponse)
-def end_session(session_id: str = "default_session", db: Session = Depends(get_db)):
-    return clear_chat(session_id=session_id, db=db)
+@app.post("/api/chat/sessions/{session_id}/regenerate", response_model=ChatResponse)
+def regenerate(
+    session_id: ResourceId,
+    body: RegenerateRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return rag_engine.regenerate(
+        db=db, session_id=session_id, message_id=body.message_id, current_user=current_user
+    )
